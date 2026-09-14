@@ -4,14 +4,23 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 3001",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+    "build": "prisma generate && next build",
+    "start": "next start --port 3001",
+    "lint": "eslint",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:studio": "prisma studio",
+    "clean:icloud": "find .next -name '* [0-9].*' -delete 2>/dev/null || true",
+    "predev": "npm run clean:icloud",
+    "prebuild": "npm run clean:icloud",
+    "prelint": "npm run clean:icloud"
   },
   "dependencies": {
     "@calcom/embed-react": "^1.5.3",
     "@libsql/client": "^0.18.0",
     "@prisma/adapter-libsql": "^7.10.0",
+    "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "nanoid": "^6.0.1",
     "next": "16.3.4",

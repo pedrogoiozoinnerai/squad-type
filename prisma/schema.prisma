@@ -1,6 +1,7 @@
 // Prisma schema — Funil de diagnóstico (Squad.com)
-// Local dev: SQLite (zero infra). Produção: trocar `provider` para "postgresql"
-// e apontar DATABASE_URL para o Postgres gerenciado (Neon/Supabase/Railway).
+// Postgres (Supabase) em dev e em produção — dois projetos Supabase distintos,
+// mesma estrutura, para que o que roda local seja o que roda publicado.
+// Em produção este banco é compartilhado com o CRM e com o Dashboard.
 
 generator client {
   provider = "prisma-client"
@@ -8,7 +9,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 enum LeadStatus {
