@@ -1,0 +1,112 @@
+// Prisma schema — Funil de diagnóstico (Squad.com)
+// Local dev: SQLite (zero infra). Produção: trocar `provider` para "postgresql"
+// e apontar DATABASE_URL para o Postgres gerenciado (Neon/Supabase/Railway).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum LeadStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+}
+
+enum StepKey {
+  NAME
+  PHONE
+  EMAIL
+  COMPANY
+  SEGMENT
+  ROLE
+  REVENUE
+  SCHEDULE
+}
+
+model Lead {
+  id        String   @id @default(cuid())
+  sessionId String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  status      LeadStatus @default(IN_PROGRESS)
+  currentStep StepKey    @default(NAME)
+  completedAt DateTime?
+
+  // Passo 1 — nome
+  fullName String?
+
+  // Passo 2 — WhatsApp
+  phoneCountryCode String? // ex: "+55"
+  phoneNumber      String? // dígitos, sem formatação
+  phoneE164        String? // ex: "+5511987654321"
+  ddd              String? // ex: "11"
+  city             String? // derivado do DDD, ex: "São Paulo"
+  state            String? // derivado do DDD, ex: "SP"
+
+  // Passo 3 — e-mail
+  email String?
+
+  // Passo 4 — empresa
+  company String?
+
+  // Passo 5 — segmento
+  segment String?
+
+  // Passo 6 — cargo
+  role String?
+
+  // Passo 7 — faturamento anual
+  revenueRange String?
+
+  // Passo 8 — agendamento (Cal.com)
+  calBookingUid   String?
+  scheduledAt     DateTime?
+  meetingLocation String?
+
+  // Integração HubSpot — preenchido após o primeiro sync bem-sucedido
+  hubspotContactId String?
+  hubspotDealId    String?
+
+  // Consentimento LGPD
+  consentAcceptedAt DateTime?
+  privacyVersion    String?
+
+  // Atribuição / rastreamento
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  utmTerm     String?
+  utmContent  String?
+  fbclid      String?
+  gclid       String?
+  fbp         String?
+  fbc         String?
+  referrer    String?
+  landingUrl  String?
+  userAgent   String?
+  ipAddress   String?
+
+  events LeadEvent[]
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+// Trilha de auditoria: cada resposta enviada durante o funil,
+// útil para funil de abandono/analytics sem depender só do snapshot do Lead.
+model LeadEvent {
+  id        String   @id @default(cuid())
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  step      StepKey
+  payload   String // JSON serializado da resposta daquele passo
+  createdAt DateTime @default(now())
+
+  @@index([leadId])
+}
