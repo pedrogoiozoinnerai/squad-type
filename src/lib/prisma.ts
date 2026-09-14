@@ -15,7 +15,7 @@ const globalForPrisma = globalThis as unknown as {
  * `type_dev` na máquina. É a mesma variável que o prisma7.config.ts usa
  * para direcionar as migrações.
  */
-export const DB_SCHEMA = process.env.DB_SCHEMA ?? "type";
+export const DB_SCHEMA = process.env.DB_SCHEMA || "type";
 
 function createClient() {
   const connectionString = process.env.DATABASE_URL;

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const BRAND_NAME = process.env.NEXT_PUBLIC_BRAND_NAME ?? "Squad.com";
+export const BRAND_NAME = process.env.NEXT_PUBLIC_BRAND_NAME || "Squad.com";
 
 export const STEP_ORDER = [
   "NAME",

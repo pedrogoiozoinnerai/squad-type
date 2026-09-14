@@ -8,7 +8,7 @@ const fustat = Fustat({
   subsets: ["latin"],
 });
 
-const brandName = process.env.NEXT_PUBLIC_BRAND_NAME ?? "Squad.com";
+const brandName = process.env.NEXT_PUBLIC_BRAND_NAME || "Squad.com";
 
 export const metadata: Metadata = {
   title: `Diagnóstico ${brandName}`,

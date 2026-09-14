@@ -4,7 +4,7 @@ import { BotAvatar } from "./BotAvatar";
 export function ProgressBar({ stepIndex }: { stepIndex: number }) {
   const total = STEP_ORDER.length;
   const pct = Math.min(100, Math.round((stepIndex / (total - 1)) * 100));
-  const brandName = process.env.NEXT_PUBLIC_BRAND_NAME ?? "Squad.com";
+  const brandName = process.env.NEXT_PUBLIC_BRAND_NAME || "Squad.com";
 
   return (
     <header className="sticky top-0 z-10 bg-waz-40 text-white shadow-sm">
