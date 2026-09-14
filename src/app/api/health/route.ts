@@ -24,6 +24,21 @@ function redigir(mensagem: string): string {
 }
 
 export async function GET() {
+  // Variáveis de SISTEMA da Vercel: sempre injetadas, independentemente do que
+  // o projeto configurou. Se estas chegarem e as nossas não, o problema está no
+  // vínculo das variáveis com este projeto — não na função nem no build.
+  const vercel = {
+    ambiente: process.env.VERCEL_ENV ?? "(fora da Vercel)",
+    commit: (process.env.VERCEL_GIT_COMMIT_SHA ?? "?").slice(0, 7),
+    branch: process.env.VERCEL_GIT_COMMIT_REF ?? "?",
+    projeto: process.env.VERCEL_PROJECT_ID ? "definido" : "ausente",
+    regiao: process.env.VERCEL_REGION ?? "?",
+    totalDeVariaveis: Object.keys(process.env).length,
+    nossasChaves: Object.keys(process.env)
+      .filter((k) => /^(DATABASE_URL|DIRECT_URL|DB_SCHEMA|NEXT_PUBLIC_|HUBSPOT_|CAL_)/.test(k))
+      .sort(),
+  };
+
   const env = {
     DATABASE_URL: Boolean(process.env.DATABASE_URL),
     DIRECT_URL: Boolean(process.env.DIRECT_URL),
@@ -46,5 +61,5 @@ export async function GET() {
     };
   }
 
-  return NextResponse.json({ env, banco }, { status: banco.ok ? 200 : 503 });
+  return NextResponse.json({ vercel, env, banco }, { status: banco.ok ? 200 : 503 });
 }
