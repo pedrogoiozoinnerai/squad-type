@@ -1,7 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { syncLeadToHubspot } from "@/lib/hubspot";
 
 // Webhook do Cal.com (Settings > Developer > Webhooks). Configure a URL desse
 // endpoint lá, assine com CAL_WEBHOOK_SECRET, e marque pelo menos o evento
@@ -66,14 +65,14 @@ export async function POST(request: NextRequest) {
   }
 
   // Idempotente: se o client-side (bookingSuccessful) já processou essa mesma
-  // reserva antes do webhook chegar, não duplica evento/nota no HubSpot.
+  // reserva antes do webhook chegar, não duplica o LeadEvent.
   if (lead.calBookingUid === booking.uid) {
     return NextResponse.json({ ok: true, matched: true, alreadyProcessed: true });
   }
 
   const scheduledAt = booking.startTime ? new Date(booking.startTime) : new Date();
 
-  const updated = await prisma.lead.update({
+  await prisma.lead.update({
     where: { id: lead.id },
     data: {
       calBookingUid: booking.uid,
@@ -88,13 +87,6 @@ export async function POST(request: NextRequest) {
       },
     },
   });
-
-  if (updated.email) {
-    await syncLeadToHubspot(updated, {
-      note: `Reunião agendada para ${scheduledAt.toLocaleString("pt-BR")} via Cal.com.`,
-      dealStageId: process.env.HUBSPOT_STAGE_SCHEDULED_ID,
-    });
-  }
 
   return NextResponse.json({ ok: true, matched: true });
 }

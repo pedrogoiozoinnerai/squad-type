@@ -108,8 +108,6 @@ git push -u origin main
 | `NEXT_PUBLIC_BRAND_NAME` | `Squad.com` |
 | `NEXT_PUBLIC_CAL_LINK` | `usuario/diagnostico-ia` (passo 6) |
 | `CAL_WEBHOOK_SECRET` | gerado pelo Cal.com (passo 6) |
-| `HUBSPOT_ACCESS_TOKEN` | token do Private App |
-| `HUBSPOT_PIPELINE_ID` · `HUBSPOT_STAGE_ID` · `HUBSPOT_STAGE_SCHEDULED_ID` | opcionais |
 | `NEXT_PUBLIC_FB_PIXEL_ID` | pixel do site principal |
 | `NEXT_PUBLIC_ATTRIBUTION_COOKIE_DOMAIN` | `.squad.com` |
 

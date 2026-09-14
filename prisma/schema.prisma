@@ -70,10 +70,6 @@ model Lead {
   scheduledAt     DateTime?
   meetingLocation String?
 
-  // Integração HubSpot — preenchido após o primeiro sync bem-sucedido
-  hubspotContactId String?
-  hubspotDealId    String?
-
   // Consentimento LGPD
   consentAcceptedAt DateTime?
   privacyVersion    String?

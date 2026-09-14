@@ -3,7 +3,6 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { extractDdd, lookupDdd } from "@/lib/ddd";
 import { STEP_ORDER, nextStep, stepValueSchemas, type StepKey } from "@/lib/funnel";
-import { qualificationNote, syncLeadToHubspot } from "@/lib/hubspot";
 
 const bodySchema = z.object({
   step: z.enum(STEP_ORDER),
@@ -93,15 +92,6 @@ export async function PATCH(
       },
     },
   });
-
-  // A partir do e-mail já dá pra ter um Contact/Deal no HubSpot; a nota de
-  // qualificação só é anexada quando a etapa de faturamento fecha o perfil.
-  if (updated.email) {
-    await syncLeadToHubspot(
-      updated,
-      step === "REVENUE" ? { note: qualificationNote(updated) } : undefined
-    );
-  }
 
   return NextResponse.json({ lead: updated });
 }

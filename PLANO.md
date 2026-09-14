@@ -35,7 +35,7 @@ Sem estes itens o funil não converte, por mais bonito que esteja.
 |---|---|---|---|---|
 | 1.1 | **Cal.com** | Criar o evento e preencher `NEXT_PUBLIC_CAL_LINK`. Sem isso o passo 8 mostra um aviso no lugar do calendário — o funil não agenda nada | 🟢 | você |
 | 1.2 | **Webhook do Cal.com** | `CAL_WEBHOOK_SECRET`. Garante o registro mesmo se o lead fechar a aba | 🟢 | você |
-| 1.3 | **HubSpot** | `HUBSPOT_ACCESS_TOKEN` (Private App). Sem ele o lead não chega ao time | 🟢 | você |
+| 1.3 | ~~HubSpot~~ — **descartado em 2026-09-14** | O CRM próprio assumiu o papel. Em contrapartida, o item 2.3 (empurrar o lead para o CRM) virou o caminho único do lead até o time — subiu de prioridade | — | — |
 | 1.4 | **Meta Pixel** | `NEXT_PUBLIC_FB_PIXEL_ID` do site principal | 🟢 | você |
 | 1.5 | **Postgres único** | Operação coordenada: Type, CRM e Dashboard apontam para a mesma instância no mesmo momento. Neon/Supabase/Railway | 🔴 | eu + você (conta) |
 | 1.6 | **Deploy + domínio** | Vercel; definir o subdomínio (sugestão: `type.squad.com`, com `NEXT_PUBLIC_ATTRIBUTION_COOKIE_DOMAIN=.squad.com` para herdar UTM do site principal) | 🟡 | eu + você (DNS) |
@@ -59,7 +59,7 @@ O que separa "funciona na minha máquina" de "aguenta campanha paga".
 
 | # | O quê | Por quê | Esforço |
 |---|---|---|---|
-| 3.1 | **Rate limit + anti-spam** nas rotas `/api/leads/*` | Hoje qualquer um injeta lead em massa — e eles seguem direto para o HubSpot. Honeypot + limite por IP; Turnstile se aparecer bot sério | 🟡 |
+| 3.1 | **Rate limit + anti-spam** nas rotas `/api/leads/*` | Hoje qualquer um injeta lead em massa — e eles entram na base que alimenta CRM e Dashboard. Honeypot + limite por IP; Turnstile se aparecer bot sério | 🟡 |
 | 3.2 | **Monitoramento de erro** (Sentry ou equivalente) | Hoje um erro em produção é invisível. O funil de referência tem módulo próprio de error tracking | 🟡 |
 | 3.3 | **Testes** | Unitários no que tem regra (DDD → cidade, validações do `funnel.ts`, dedup do agendamento) + um e2e do caminho feliz | 🔴 |
 | 3.4 | **CI** (GitHub Actions) | `lint` + `build` + testes a cada push. Só faz sentido depois do 0.1 | 🟡 |

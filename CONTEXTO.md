@@ -24,7 +24,7 @@ agendamento embutido).
 | **Next.js 16** full-stack (App Router + API routes) | Menos peças móveis que frontend/backend separados; deploy único |
 | **SQLite local** → **Postgres em produção** | Não havia Postgres/Docker disponível na máquina de dev; o schema Prisma já está pronto pra trocar o `provider` |
 | **Cal.com** embutido (embed) + webhook | Já é uma ferramenta popular de agendamento; embed cobre o caminho feliz, webhook cobre o caso do lead fechar a aba antes do evento client-side disparar |
-| **HubSpot** para CRM ("cards" = Deals) | Pedido explícito do usuário — cria Contact + Deal a cada lead |
+| ~~**HubSpot** para CRM~~ — **removido em 2026-09-14** | O CRM próprio (`../CRM`) assumiu o papel: os dois apps dividem o mesmo Postgres, então o lead do funil vira lead do CRM sem integração externa |
 | Atribuição dinâmica de UTM (cookie, 90 dias) | Pedido explícito — não pode perder a campanha de origem mesmo se o lead navegar por páginas sem UTM na URL antes de chegar no funil |
 
 ## 3. Identidade visual — como chegamos até aqui
@@ -94,7 +94,7 @@ src/
     privacidade/, termos/        → páginas placeholder (revisar com jurídico!)
     api/
       leads/route.ts             → POST: cria/atualiza sessão + atribuição (UTMs)
-      leads/[sessionId]/route.ts → PATCH: salva resposta de cada passo, dispara HubSpot
+      leads/[sessionId]/route.ts → PATCH: salva a resposta de cada passo
       leads/[sessionId]/schedule/route.ts → POST: confirma agendamento (client-side)
       webhooks/cal/route.ts      → POST: confirma agendamento (server-side, via Cal.com)
   components/funnel/             → toda a UI do chat (bolhas, inputs, avatar, header)
@@ -102,7 +102,6 @@ src/
     funnel.ts                    → roteiro/copy do bot, opções de cada passo, validação (zod)
     ddd.ts                       → mapa de todos os DDDs → cidade/estado
     attribution.ts               → captura/persiste UTMs num cookie (90 dias)
-    hubspot.ts                   → integração HubSpot (Contact + Deal + Nota)
     prisma.ts                    → client Prisma (SQLite via adapter-libsql)
 prisma/schema.prisma              → modelos Lead + LeadEvent
 public/brand/                     → logo-white.svg, logo-black.svg, waz.png (baixados do manual)
@@ -141,7 +140,7 @@ que já foi visto:
 | **Facebook Pixel** | Código pronto (`NEXT_PUBLIC_FB_PIXEL_ID`), advanced matching por nome | Usuário ainda não tem o ID do pixel do site principal squad.com |
 | **Cal.com** (embed) | Funcionando, pré-preenche nome/e-mail/notas | Precisa do link real (`NEXT_PUBLIC_CAL_LINK`) |
 | **Cal.com** (webhook) | Código pronto em `/api/webhooks/cal` | Precisa configurar o webhook no painel do Cal.com + `CAL_WEBHOOK_SECRET` |
-| **HubSpot** | Código pronto (`src/lib/hubspot.ts`) — cria Contact + Deal + Nota de qualificação | Precisa de `HUBSPOT_ACCESS_TOKEN` (Private App) — passo a passo no README |
+| **CRM próprio** | Mesmo Postgres (`master_data`), schemas `type` e `crm` | O import em `/admin/importar` ainda é manual; empurrar o lead automaticamente está no PLANO.md |
 | **Atribuição de UTM** | ✅ Funcionando e testado (cookie 90 dias, sobrevive à navegação) | Nada pendente |
 
 Todas essas variáveis ficam em `.env` (ver `.env.example` para a lista
@@ -152,8 +151,6 @@ completa com comentários).
 - [ ] Pegar o **Facebook Pixel ID** do site principal squad.com
 - [ ] Criar o tipo de evento no **Cal.com** e colar o link
 - [ ] Configurar o **webhook do Cal.com** (Settings → Developer → Webhooks)
-- [ ] Criar o **Private App do HubSpot** e colar o token (passo a passo no README)
-- [ ] Confirmar/ajustar **pipeline e estágio** do HubSpot onde os deals nascem
 - [ ] Revisar `/privacidade` e `/termos` **com o jurídico** — conteúdo atual é placeholder
 - [ ] Trocar SQLite → Postgres antes de ir pra produção (passo a passo no README)
 
@@ -231,7 +228,7 @@ npm run dev
 ```
 
 Abra `http://localhost:3000`. Veja `README.md` para detalhes de cada variável
-de ambiente e como configurar Cal.com/HubSpot quando tiver as credenciais.
+de ambiente e como configurar o Cal.com.
 
 ## 11. O que NÃO foi trazido para o export
 

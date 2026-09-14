@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { stepValueSchemas } from "@/lib/funnel";
-import { syncLeadToHubspot } from "@/lib/hubspot";
 
 export async function POST(
   request: NextRequest,
@@ -44,13 +43,6 @@ export async function POST(
       },
     },
   });
-
-  if (updated.email) {
-    await syncLeadToHubspot(updated, {
-      note: `Reunião agendada para ${new Date(scheduledAt).toLocaleString("pt-BR")} via Cal.com.`,
-      dealStageId: process.env.HUBSPOT_STAGE_SCHEDULED_ID,
-    });
-  }
 
   return NextResponse.json({ lead: updated });
 }

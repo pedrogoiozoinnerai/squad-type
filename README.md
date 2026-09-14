@@ -68,19 +68,14 @@ Abra http://localhost:3000.
 | `NEXT_PUBLIC_CAL_LINK`                   | não\*       | Link do tipo de evento no Cal.com (ex: `seu-usuario/diagnostico-ia`).        |
 | `CAL_WEBHOOK_SECRET`                     | não         | Secret do webhook do Cal.com (ver seção abaixo).                             |
 | `NEXT_PUBLIC_ATTRIBUTION_COOKIE_DOMAIN`  | não         | Ex: `.squad.com`, para compartilhar UTMs entre subdomínios.                  |
-| `HUBSPOT_ACCESS_TOKEN`                   | não         | Private App Access Token do HubSpot (ver seção abaixo).                     |
-| `HUBSPOT_PIPELINE_ID` / `HUBSPOT_STAGE_ID` | não       | Pipeline/estágio onde os deals são criados. Padrão: pipeline/estágio inicial da conta. |
-| `HUBSPOT_STAGE_SCHEDULED_ID`             | não         | Estágio para onde o deal move quando o lead agenda a reunião.                |
 
 \* Sem `NEXT_PUBLIC_CAL_LINK`, a última etapa mostra um aviso no lugar do calendário.
 
 ## Banco de dados
 
 - **Local**: SQLite via driver adapter `@prisma/adapter-libsql` (não exige Postgres/Docker instalado).
-- **Produção**: troque o `provider` do `datasource` em `prisma/schema.prisma` para
-  `"postgresql"`, aponte `DATABASE_URL` para o Postgres gerenciado (Neon, Supabase,
-  Railway…) e troque o adapter em `src/lib/prisma.ts` para `@prisma/adapter-pg`
-  (`npm install @prisma/adapter-pg pg`). Rode `npx prisma migrate deploy`.
+- **Produção e desenvolvimento**: Postgres no projeto `master_data` do Supabase,
+  um schema por app (`type` e `type_dev`). Ver [`DEPLOY.md`](DEPLOY.md).
 
 Modelo principal: `Lead` (uma linha por sessão de funil, atualizada
 progressivamente a cada passo) + `LeadEvent` (trilha de auditoria de cada
@@ -108,43 +103,6 @@ disparar. O webhook cobre esse caso, confirmando direto no servidor:
    confirma o lead como `COMPLETED`, com proteção contra duplicidade caso o
    evento client-side também chegue.
 
-## HubSpot (Contact + Deal por lead)
-
-"Cards" no HubSpot = **Deals** (negócios) num pipeline. A integração cria/atualiza
-um Contact (por e-mail) e um Deal associado a cada lead, com uma nota resumindo
-a qualificação (segmento, cargo, faturamento, origem).
-
-### Como conectar
-
-1. No HubSpot: **Configurações (⚙) → Integrações → Private Apps → Create a private app**.
-2. Dê um nome (ex: "Squad.com — Funil Diagnóstico").
-3. Na aba **Scopes**, marque:
-   - `crm.objects.contacts.read` e `crm.objects.contacts.write`
-   - `crm.objects.deals.read` e `crm.objects.deals.write`
-4. Clique em **Create app** → confirme → copie o **Access Token** (começa com
-   `pat-...`, só é exibido uma vez).
-5. Cole em `HUBSPOT_ACCESS_TOKEN` no `.env` (nunca commitar esse valor).
-
-Por padrão, os deals são criados no pipeline `"default"` e no estágio
-`"appointmentscheduled"` (os IDs internos do pipeline de vendas padrão de
-qualquer conta nova do HubSpot). Se você usa um pipeline customizado, pegue o
-ID interno em **Configurações → Objetos → Deals → Pipelines** (não é o nome
-exibido) e configure `HUBSPOT_PIPELINE_ID`/`HUBSPOT_STAGE_ID`. Opcionalmente,
-`HUBSPOT_STAGE_SCHEDULED_ID` move o deal de estágio quando o lead agenda.
-
-### Quando o sync acontece
-
-- A partir do passo **E-mail**: cria/atualiza o Contact e o Deal a cada passo
-  respondido (`PATCH /api/leads/[sessionId]`).
-- No passo **Faturamento** (perfil de qualificação completo): adiciona a nota
-  com o resumo da qualificação.
-- No **agendamento** (client-side ou via webhook do Cal.com): adiciona uma nota
-  "Reunião agendada para..." e move o deal de estágio se `HUBSPOT_STAGE_SCHEDULED_ID`
-  estiver configurado.
-- Sem `HUBSPOT_ACCESS_TOKEN`, todas as chamadas são no-op silencioso — nada quebra.
-
-Lógica em `src/lib/hubspot.ts`.
-
 ## Rastreamento
 
 - **Atribuição dinâmica**: UTMs (`utm_source/medium/campaign/term/content`) e
@@ -163,7 +121,6 @@ Lógica em `src/lib/hubspot.ts`.
 
 - Revisar `/privacidade` e `/termos` com o jurídico (conteúdo é placeholder).
 - Trocar o banco para Postgres (ver acima).
-- Configurar `NEXT_PUBLIC_FB_PIXEL_ID`, `NEXT_PUBLIC_CAL_LINK`, `CAL_WEBHOOK_SECRET`
-  e `HUBSPOT_ACCESS_TOKEN`.
+- Configurar `NEXT_PUBLIC_FB_PIXEL_ID`, `NEXT_PUBLIC_CAL_LINK` e `CAL_WEBHOOK_SECRET`.
 - Considerar proteção anti-spam/rate limiting nas rotas `/api/leads/*` (fora do
   escopo inicial).

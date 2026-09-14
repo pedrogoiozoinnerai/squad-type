@@ -35,7 +35,7 @@ export async function GET() {
     regiao: process.env.VERCEL_REGION ?? "?",
     totalDeVariaveis: Object.keys(process.env).length,
     nossasChaves: Object.keys(process.env)
-      .filter((k) => /^(DATABASE_URL|DIRECT_URL|DB_SCHEMA|NEXT_PUBLIC_|HUBSPOT_|CAL_)/.test(k))
+      .filter((k) => /^(DATABASE_URL|DIRECT_URL|DB_SCHEMA|NEXT_PUBLIC_|CAL_)/.test(k))
       .sort(),
   };
 
@@ -46,7 +46,6 @@ export async function GET() {
     NEXT_PUBLIC_BRAND_NAME: Boolean(process.env.NEXT_PUBLIC_BRAND_NAME),
     NEXT_PUBLIC_CAL_LINK: Boolean(process.env.NEXT_PUBLIC_CAL_LINK),
     CAL_WEBHOOK_SECRET: Boolean(process.env.CAL_WEBHOOK_SECRET),
-    HUBSPOT_ACCESS_TOKEN: Boolean(process.env.HUBSPOT_ACCESS_TOKEN),
   };
 
   let banco: { ok: boolean; schema: string; leads?: number; erro?: string };
