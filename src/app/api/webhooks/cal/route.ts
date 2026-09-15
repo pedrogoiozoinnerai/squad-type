@@ -3,12 +3,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 // Webhook do Cal.com (Settings > Developer > Webhooks). Configure a URL desse
-// endpoint lá, assine com CAL_WEBHOOK_SECRET, e marque pelo menos o evento
-// "Booking Created". Isso confirma o agendamento no nosso banco mesmo se o
-// lead fechar a aba antes do evento client-side (bookingSuccessful) disparar.
+// endpoint lá, assine com CAL_WEBHOOK_SECRET, e marque os eventos
+// "Booking Created", "Booking Cancelled" e "Booking Rescheduled".
+//
+// Criação confirma o agendamento mesmo se o lead fechar a aba antes do evento
+// client-side disparar. Cancelamento e remarcação existem porque o CRM lê este
+// banco: sem eles, um vendedor ficaria com reunião fantasma na agenda e
+// ninguém saberia que a pessoa desmarcou.
 
 type CalBookingPayload = {
   uid?: string;
+  /// No reagendamento o Cal manda o uid antigo aqui e um novo em `uid`.
+  originalBookingUid?: string;
   startTime?: string;
   metadata?: Record<string, unknown>;
   attendees?: { email?: string }[];
@@ -40,28 +46,62 @@ export async function POST(request: NextRequest) {
   }
 
   const event = JSON.parse(rawBody) as CalWebhookEvent;
-  if (event.triggerEvent !== "BOOKING_CREATED") {
-    // Só nos importamos com a criação da reserva por enquanto (cancelamento/
-    // reagendamento podem ser tratados depois se virar necessário).
-    return NextResponse.json({ ok: true, ignored: event.triggerEvent });
+  const tipo = event.triggerEvent;
+  if (tipo !== "BOOKING_CREATED" && tipo !== "BOOKING_CANCELLED" && tipo !== "BOOKING_RESCHEDULED") {
+    return NextResponse.json({ ok: true, ignored: tipo });
   }
 
   const booking = event.payload;
   const sessionId = booking?.metadata?.sessionId;
   const attendeeEmail = booking?.attendees?.[0]?.email;
 
+  // Cancelamento e remarcação chegam com o uid da reserva, que é a ligação mais
+  // confiável — o `metadata.sessionId` só existe na reserva criada pelo funil.
+  const porUid = booking?.uid || booking?.originalBookingUid;
+
   const lead =
     typeof sessionId === "string"
       ? await prisma.lead.findUnique({ where: { sessionId } })
-      : attendeeEmail
-        ? await prisma.lead.findFirst({
-            where: { email: attendeeEmail },
-            orderBy: { createdAt: "desc" },
-          })
-        : null;
+      : porUid
+        ? await prisma.lead.findFirst({ where: { calBookingUid: porUid } })
+        : attendeeEmail
+          ? await prisma.lead.findFirst({
+              where: { email: attendeeEmail },
+              orderBy: { createdAt: "desc" },
+            })
+          : null;
 
   if (!lead || !booking?.uid) {
     return NextResponse.json({ ok: true, matched: false });
+  }
+
+  if (tipo === "BOOKING_CANCELLED") {
+    // `scheduledAt` fica como estava de propósito: apagá-lo tornaria este lead
+    // indistinguível de quem nunca agendou, e é essa diferença que faz o CRM
+    // abrir uma tarefa de retomada em vez de um primeiro contato.
+    await prisma.lead.update({
+      where: { id: lead.id },
+      data: {
+        calCancelledAt: new Date(),
+        events: { create: { step: "SCHEDULE", payload: JSON.stringify({ source: "cal_webhook", tipo, ...booking }) } },
+      },
+    });
+    return NextResponse.json({ ok: true, matched: true, cancelled: true });
+  }
+
+  if (tipo === "BOOKING_RESCHEDULED") {
+    await prisma.lead.update({
+      where: { id: lead.id },
+      data: {
+        calBookingUid: booking.uid,
+        scheduledAt: booking.startTime ? new Date(booking.startTime) : lead.scheduledAt,
+        // Remarcou depois de ter cancelado: volta a valer.
+        calCancelledAt: null,
+        status: "COMPLETED",
+        events: { create: { step: "SCHEDULE", payload: JSON.stringify({ source: "cal_webhook", tipo, ...booking }) } },
+      },
+    });
+    return NextResponse.json({ ok: true, matched: true, rescheduled: true });
   }
 
   // Idempotente: se o client-side (bookingSuccessful) já processou essa mesma
@@ -77,6 +117,7 @@ export async function POST(request: NextRequest) {
     data: {
       calBookingUid: booking.uid,
       scheduledAt,
+      calCancelledAt: null,
       status: "COMPLETED",
       completedAt: new Date(),
       events: {

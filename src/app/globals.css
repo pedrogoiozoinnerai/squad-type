@@ -3,6 +3,10 @@
 :root {
   --background: #faf9f7;
   --foreground: #0f172a;
+
+  /* Recortes do aparelho (notch, barra de gestos). Fora do iOS valem 0. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 @theme inline {
@@ -27,4 +31,28 @@
 body {
   background: var(--background);
   color: var(--foreground);
+  /* O funil inteiro cabe na tela e rola só a lista de mensagens; travar o eixo X
+   * evita aquele arrasto lateral de 1px que uma sombra ou um embed largo causa. */
+  overflow-x: hidden;
+}
+
+/* Safari iOS dá zoom automático ao focar um campo com fonte menor que 16px —
+ * e, pior, não desfaz o zoom depois. 16px em diante mantém a tela no lugar. */
+@supports (-webkit-touch-callout: none) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

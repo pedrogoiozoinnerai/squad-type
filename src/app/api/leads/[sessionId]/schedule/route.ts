@@ -22,7 +22,7 @@ export async function POST(
   const { calBookingUid, scheduledAt, meetingLocation } = parsed.data;
 
   // Tanto o evento client-side (bookingSuccessful) quanto o webhook do Cal.com
-  // podem confirmar a mesma reserva — evita duplicar o LeadEvent e a nota no HubSpot.
+  // podem confirmar a mesma reserva — sair cedo evita duplicar o LeadEvent.
   if (lead.calBookingUid === calBookingUid) {
     return NextResponse.json({ lead });
   }

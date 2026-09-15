@@ -7,8 +7,13 @@ export function ProgressBar({ stepIndex }: { stepIndex: number }) {
   const brandName = process.env.NEXT_PUBLIC_BRAND_NAME || "Squad.com";
 
   return (
-    <header className="sticky top-0 z-10 bg-waz-40 text-white shadow-sm">
-      <div className="flex items-center gap-3 px-4 py-3">
+    <header className="z-20 shrink-0 bg-waz-40 text-white shadow-sm">
+      {/* O recorte do topo (notch / ilha dinâmica) entra como respiro no próprio
+          cabeçalho: assim a faixa verde sobe até a borda e o texto não some. */}
+      <div
+        className="flex items-center gap-3 px-4 pb-3"
+        style={{ paddingTop: "calc(0.75rem + var(--safe-top))" }}
+      >
         <BotAvatar size="lg" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-semibold leading-tight">

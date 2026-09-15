@@ -70,6 +70,13 @@ model Lead {
   scheduledAt     DateTime?
   meetingLocation String?
 
+  /// Quando a reserva foi cancelada no Cal.com.
+  ///
+  /// Anular `scheduledAt` seria mais simples e apagaria a diferença entre
+  /// "nunca agendou" e "agendou e desmarcou" — e é justamente essa diferença
+  /// que faz o CRM criar uma tarefa de retomada para o vendedor certo.
+  calCancelledAt DateTime?
+
   // Consentimento LGPD
   consentAcceptedAt DateTime?
   privacyVersion    String?

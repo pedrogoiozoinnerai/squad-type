@@ -42,6 +42,26 @@ async function safe(fn: () => Promise<unknown>, label: string) {
   }
 }
 
+/**
+ * A criação do lead é disparada na montagem do chat e ninguém a aguarda. Se o
+ * usuário respondesse o primeiro passo antes de ela terminar, o PATCH chegaria
+ * ao servidor antes do POST e a resposta se perderia. Guardamos a promessa aqui
+ * e todo envio posterior espera por ela — a fila do funil passa a ser ordenada
+ * por construção, sem depender da velocidade da rede do usuário.
+ */
+let leadCreated: Promise<void> | null = null;
+
+async function afterLeadExists() {
+  if (!leadCreated) return;
+  try {
+    await leadCreated;
+  } catch {
+    // O servidor cria o lead no próprio PATCH se ele ainda não existir, então
+    // vale seguir mesmo quando a criação falhou: é melhor gravar a resposta
+    // tarde do que descartá-la.
+  }
+}
+
 export function initLead(payload: {
   sessionId: string;
   utmSource?: string | null;
@@ -56,49 +76,48 @@ export function initLead(payload: {
   referrer?: string | null;
   landingUrl?: string | null;
 }) {
-  return safe(
-    () =>
-      fetch("/api/leads", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }).then((res) => {
-        if (!res.ok) throw new HttpError("init_failed", res.status);
-        return res.json();
-      }),
-    "initLead"
-  );
+  const call = withRetry(() =>
+    fetch("/api/leads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then((res) => {
+      if (!res.ok) throw new HttpError("init_failed", res.status);
+      return res.json();
+    })
+  ).then(() => undefined);
+
+  leadCreated = call;
+  return call.catch((err) => {
+    console.error("[api-client] initLead falhou", err);
+  });
 }
 
 export function submitStep(sessionId: string, step: StepKey, value: Record<string, unknown>) {
-  return safe(
-    () =>
-      fetch(`/api/leads/${sessionId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ step, value }),
-      }).then((res) => {
-        if (!res.ok) throw new HttpError("submit_failed", res.status);
-        return res.json();
-      }),
-    `submitStep(${step})`
-  );
+  return safe(async () => {
+    await afterLeadExists();
+    const res = await fetch(`/api/leads/${sessionId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ step, value }),
+    });
+    if (!res.ok) throw new HttpError("submit_failed", res.status);
+    return res.json();
+  }, `submitStep(${step})`);
 }
 
 export function submitSchedule(
   sessionId: string,
   payload: { calBookingUid: string; scheduledAt: string; meetingLocation?: string }
 ) {
-  return safe(
-    () =>
-      fetch(`/api/leads/${sessionId}/schedule`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }).then((res) => {
-        if (!res.ok) throw new HttpError("schedule_failed", res.status);
-        return res.json();
-      }),
-    "submitSchedule"
-  );
+  return safe(async () => {
+    await afterLeadExists();
+    const res = await fetch(`/api/leads/${sessionId}/schedule`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new HttpError("schedule_failed", res.status);
+    return res.json();
+  }, "submitSchedule");
 }

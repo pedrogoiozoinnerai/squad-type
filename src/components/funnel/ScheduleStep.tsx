@@ -95,7 +95,7 @@ export function ScheduleStep({
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center gap-2 border-b border-slate-200 bg-white px-4 py-3">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-slate-200 bg-white px-4 py-3">
         <svg
           viewBox="0 0 24 24"
           width="16"
@@ -119,7 +119,9 @@ export function ScheduleStep({
       <Cal
         namespace="diagnostico"
         calLink={calLink}
-        style={{ width: "100%", height: "560px", overflow: "auto" }}
+        // O próprio Cal.com ajusta a altura do iframe conforme o conteúdo; o
+        // valor abaixo é só o espaço reservado enquanto ele carrega.
+        style={{ width: "100%", minHeight: "420px" }}
         config={{
           name: answers.fullName ?? "",
           email: answers.email ?? "",

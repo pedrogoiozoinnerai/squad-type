@@ -23,9 +23,13 @@ export function TextFieldStep({
 }) {
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // Enter e toque no botão podem chegar praticamente juntos; sem trava o mesmo
+  // passo era enviado duas vezes, gerando dois balões e dois PATCH.
+  const [enviando, setEnviando] = useState(false);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (enviando) return;
     const trimmed = value.trim();
     const validationError = validate(trimmed);
     if (validationError) {
@@ -33,6 +37,7 @@ export function TextFieldStep({
       return;
     }
     setError(null);
+    setEnviando(true);
     onSubmit(trimmed);
   }
 
@@ -45,13 +50,19 @@ export function TextFieldStep({
               autoFocus
               type={type}
               inputMode={type === "email" ? "email" : undefined}
+              enterKeyHint="send"
               autoComplete={autoComplete}
+              autoCapitalize={type === "email" ? "none" : "words"}
+              autoCorrect="off"
+              spellCheck={false}
+              disabled={enviando}
               placeholder={placeholder}
+              aria-label={label}
               value={value}
               onChange={(e) => setValue(e.target.value)}
-              className="w-full bg-transparent py-1 text-[15px] text-slate-900 placeholder:text-slate-400 focus:outline-none"
+              className="w-full min-w-0 bg-transparent py-1 text-[15px] text-slate-900 placeholder:text-slate-400 focus:outline-none disabled:opacity-60"
             />
-            <SubmitArrow disabled={value.trim().length === 0} />
+            <SubmitArrow disabled={value.trim().length === 0 || enviando} />
           </div>
         </StepShell>
       </form>

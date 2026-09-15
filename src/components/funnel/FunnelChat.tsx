@@ -28,7 +28,10 @@ import { SelectDropdown } from "./inputs/SelectDropdown";
 import { RoleFullscreenStep } from "./inputs/RoleFullscreenStep";
 import { ScheduleStep } from "./ScheduleStep";
 
-type ChatMessage = { role: "bot" | "user"; text: string; read?: boolean };
+/** `at` é o instante em que a mensagem entrou na conversa. Guardar isso na
+ * mensagem (em vez de chamar `new Date()` na hora de desenhar) é o que impede
+ * que o horário de todos os balões pule para "agora" a cada nova resposta. */
+type ChatMessage = { role: "bot" | "user"; text: string; read?: boolean; at?: number };
 
 function readCookie(name: string): string | null {
   if (typeof document === "undefined") return null;
@@ -53,19 +56,31 @@ export function FunnelChat() {
   );
   const [typing, setTyping] = useState(false);
   const [ready, setReady] = useState(() => !!resumed);
-  const bottomRef = useRef<HTMLDivElement>(null);
+
+  // `busy` cobre a transição inteira de um passo: começa no envio da resposta e
+  // só termina quando o bot acaba de falar e o passo seguinte já está no ar.
+  // Sem isso o campo do passo *anterior* reaparecia no respiro entre duas falas
+  // do bot (`typing` pisca false ali no meio), convidando a responder duas vezes.
+  const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+
+  const scrollRef = useRef<HTMLDivElement>(null);
   const hasStartedIntro = useRef(false);
 
+  // Rola só a lista de mensagens, não a página: o campo de resposta vive fora
+  // dessa área e precisa continuar ancorado no rodapé, visível o tempo todo.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatLog, typing]);
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [chatLog, typing, currentStep, ready]);
 
   const pushBotMessages = useCallback(async (messages: string[]) => {
     for (const text of messages) {
       setTyping(true);
       await new Promise((r) => setTimeout(r, 500 + Math.min(text.length * 6, 700)));
       setTyping(false);
-      setChatLog((log) => [...log, { role: "bot", text }]);
+      setChatLog((log) => [...log, { role: "bot", text, at: Date.now() }]);
     }
   }, []);
 
@@ -77,7 +92,7 @@ export function FunnelChat() {
     hasStartedIntro.current = true;
 
     const attribution = captureAttribution();
-    void initLead({
+    const identificacao = {
       sessionId,
       utmSource: attribution.utmSource ?? null,
       utmMedium: attribution.utmMedium ?? null,
@@ -86,18 +101,34 @@ export function FunnelChat() {
       utmContent: attribution.utmContent ?? null,
       fbclid: attribution.fbclid ?? null,
       gclid: attribution.gclid ?? null,
-      fbp: readCookie("_fbp"),
-      fbc: readCookie("_fbc"),
       referrer: attribution.firstReferrer ?? null,
       landingUrl: attribution.firstLandingUrl ?? null,
+    };
+
+    void initLead({
+      ...identificacao,
+      fbp: readCookie("_fbp"),
+      fbc: readCookie("_fbc"),
     });
 
-    if (resumed) return;
+    // `_fbp`/`_fbc` são gravados pelo script do Pixel, que carrega depois da
+    // hidratação: na primeira leitura eles quase sempre ainda não existem. Uma
+    // segunda passada alguns segundos depois é o que faz o pareamento com o
+    // Facebook realmente chegar ao banco.
+    const tentarClickIds = window.setTimeout(() => {
+      const fbp = readCookie("_fbp");
+      const fbc = readCookie("_fbc");
+      if (fbp || fbc) void initLead({ ...identificacao, fbp, fbc });
+    }, 3000);
+
+    if (resumed) return () => window.clearTimeout(tentarClickIds);
 
     void (async () => {
       await pushBotMessages(introMessages());
       setReady(true);
     })();
+
+    return () => window.clearTimeout(tentarClickIds);
   }, [resumed, sessionId, pushBotMessages]);
 
   // Persiste o progresso a cada mudança relevante (permite retomar ao recarregar).
@@ -127,7 +158,16 @@ export function FunnelChat() {
 
   const advance = useCallback(
     async (step: StepKey, updatedAnswers: StepAnswers, userDisplayText: string) => {
-      setChatLog((log) => [...log, { role: "user", text: userDisplayText, read: false }]);
+      // O ref trava já na primeira chamada; `busy` sozinho só valeria no render
+      // seguinte, e dois toques rápidos no botão cabem folgadamente antes disso.
+      if (busyRef.current) return;
+      busyRef.current = true;
+      setBusy(true);
+
+      setChatLog((log) => [
+        ...log,
+        { role: "user", text: userDisplayText, read: false, at: Date.now() },
+      ]);
       setAnswers(updatedAnswers);
       setTimeout(markLastUserMessageRead, 900);
 
@@ -135,6 +175,9 @@ export function FunnelChat() {
       const botMessages = messagesForStep(step, updatedAnswers);
       await pushBotMessages(botMessages);
       if (upcoming) setCurrentStep(upcoming);
+
+      busyRef.current = false;
+      setBusy(false);
     },
     [pushBotMessages, markLastUserMessageRead]
   );
@@ -148,12 +191,19 @@ export function FunnelChat() {
     [sessionId]
   );
 
+  const mostrarEntrada = ready && !busy;
+  // O calendário do Cal.com passa de mil pixels de altura: ele pertence ao fluxo
+  // rolável junto das mensagens, não à barra fixa do rodapé.
+  const passoAgendamento = currentStep === "SCHEDULE";
+
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col bg-background">
+    <div className="mx-auto flex h-dvh w-full max-w-3xl flex-col bg-background">
       <ProgressBar stepIndex={indexOfStep(currentStep)} />
 
       <div
-        className="flex-1 space-y-5 px-4 py-6"
+        ref={scrollRef}
+        aria-live="polite"
+        className="flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 py-6"
         style={{
           backgroundImage:
             "radial-gradient(rgba(29, 78, 53, 0.08) 1px, transparent 1px)",
@@ -162,134 +212,144 @@ export function FunnelChat() {
       >
         {chatLog.map((m, i) =>
           m.role === "bot" ? (
-            <BotBubble key={i} text={m.text} />
+            <BotBubble key={i} text={m.text} at={m.at} />
           ) : (
-            <UserBubble key={i} text={m.text} read={m.read} />
+            <UserBubble key={i} text={m.text} read={m.read} at={m.at} />
           )
         )}
         {typing && <TypingIndicator />}
-        <div ref={bottomRef} />
 
-        {ready && !typing && (
-          <div className="pt-2">
-            {currentStep === "NAME" && (
-              <TextFieldStep
-                label="Nome completo"
-                placeholder="Digite seu nome e sobrenome..."
-                autoComplete="name"
-                showConsent
-                validate={(v) =>
-                  v.split(/\s+/).length < 2 ? "Informe nome e sobrenome" : null
-                }
-                onSubmit={(value) => {
-                  const updated = { ...answers, fullName: value };
-                  fbAdvancedMatch(firstName(value), value.split(/\s+/).slice(1).join(" "));
-                  void submitStep(sessionId, "NAME", { fullName: value });
-                  void advance("NAME", updated, value);
-                }}
-              />
-            )}
-
-            {currentStep === "PHONE" && (
-              <PhoneStep
-                onSubmit={(phoneNumber) => {
-                  const ddd = extractDdd(phoneNumber);
-                  const info = ddd ? lookupDdd(ddd) : null;
-                  const updated: StepAnswers = {
-                    ...answers,
-                    phoneCountryCode: "+55",
-                    phoneNumber,
-                    city: info?.city ?? null,
-                    state: info?.state ?? null,
-                  };
-                  void submitStep(sessionId, "PHONE", {
-                    phoneCountryCode: "+55",
-                    phoneNumber,
-                  });
-                  fbTrack("Contact");
-                  void advance("PHONE", updated, `+55 ${formatBRPhone(phoneNumber)}`);
-                }}
-              />
-            )}
-
-            {currentStep === "EMAIL" && (
-              <TextFieldStep
-                label="E-mail"
-                placeholder="seu@email.com"
-                type="email"
-                autoComplete="email"
-                validate={(v) => (!/^\S+@\S+\.\S+$/.test(v) ? "E-mail inválido" : null)}
-                onSubmit={(value) => {
-                  const updated = { ...answers, email: value };
-                  void submitStep(sessionId, "EMAIL", { email: value });
-                  void advance("EMAIL", updated, value);
-                }}
-              />
-            )}
-
-            {currentStep === "COMPANY" && (
-              <TextFieldStep
-                label="Empresa"
-                placeholder="Nome da sua empresa..."
-                autoComplete="organization"
-                validate={(v) => (v.length < 2 ? "Informe o nome da empresa" : null)}
-                onSubmit={(value) => {
-                  const updated = { ...answers, company: value };
-                  void submitStep(sessionId, "COMPANY", { company: value });
-                  void advance("COMPANY", updated, value);
-                }}
-              />
-            )}
-
-            {currentStep === "SEGMENT" && (
-              <SelectDropdown
-                label="Segmento"
-                placeholder="Selecione o segmento da sua empresa"
-                options={SEGMENT_OPTIONS}
-                onSubmit={(value) => {
-                  const updated = { ...answers, segment: value };
-                  void submitStep(sessionId, "SEGMENT", { segment: value });
-                  void advance("SEGMENT", updated, value);
-                }}
-              />
-            )}
-
-            {currentStep === "ROLE" && (
-              <RoleFullscreenStep
-                company={answers.company}
-                onSubmit={(value) => {
-                  const updated = { ...answers, role: value };
-                  void submitStep(sessionId, "ROLE", { role: value });
-                  fbTrack("CompleteRegistration");
-                  void advance("ROLE", updated, value);
-                }}
-              />
-            )}
-
-            {currentStep === "REVENUE" && (
-              <SelectDropdown
-                label="Faturamento anual"
-                placeholder="Selecione o faturamento"
-                options={REVENUE_OPTIONS}
-                onSubmit={(value) => {
-                  const updated = { ...answers, revenueRange: value };
-                  void submitStep(sessionId, "REVENUE", { revenueRange: value });
-                  void advance("REVENUE", updated, value);
-                }}
-              />
-            )}
-
-            {currentStep === "SCHEDULE" && (
-              <ScheduleStep
-                sessionId={sessionId}
-                answers={answers}
-                alreadyScheduled={answers.scheduledConfirmed}
-                onScheduled={handleScheduled}
-              />
-            )}
-          </div>
+        {mostrarEntrada && passoAgendamento && (
+          <ScheduleStep
+            sessionId={sessionId}
+            answers={answers}
+            alreadyScheduled={answers.scheduledConfirmed}
+            onScheduled={handleScheduled}
+          />
         )}
       </div>
+
+      {!passoAgendamento && (
+        <div
+          className="shrink-0 border-t border-slate-200 bg-background px-4 pt-3"
+          style={{ paddingBottom: "calc(0.75rem + var(--safe-bottom))" }}
+        >
+          {/* Altura mínima reservada: sem ela a barra colapsa enquanto o bot
+              digita e a conversa inteira dá um pulo a cada passo. */}
+          <div className="flex min-h-[78px] flex-col justify-center">
+            {mostrarEntrada && (
+              <>
+                {currentStep === "NAME" && (
+                  <TextFieldStep
+                    label="Nome completo"
+                    placeholder="Digite seu nome e sobrenome..."
+                    autoComplete="name"
+                    showConsent
+                    validate={(v) =>
+                      v.split(/\s+/).length < 2 ? "Informe nome e sobrenome" : null
+                    }
+                    onSubmit={(value) => {
+                      const updated = { ...answers, fullName: value };
+                      fbAdvancedMatch(firstName(value), value.split(/\s+/).slice(1).join(" "));
+                      void submitStep(sessionId, "NAME", { fullName: value });
+                      void advance("NAME", updated, value);
+                    }}
+                  />
+                )}
+
+                {currentStep === "PHONE" && (
+                  <PhoneStep
+                    onSubmit={(phoneNumber) => {
+                      const ddd = extractDdd(phoneNumber);
+                      const info = ddd ? lookupDdd(ddd) : null;
+                      const updated: StepAnswers = {
+                        ...answers,
+                        phoneCountryCode: "+55",
+                        phoneNumber,
+                        city: info?.city ?? null,
+                        state: info?.state ?? null,
+                      };
+                      void submitStep(sessionId, "PHONE", {
+                        phoneCountryCode: "+55",
+                        phoneNumber,
+                      });
+                      fbTrack("Contact");
+                      void advance("PHONE", updated, `+55 ${formatBRPhone(phoneNumber)}`);
+                    }}
+                  />
+                )}
+
+                {currentStep === "EMAIL" && (
+                  <TextFieldStep
+                    label="E-mail"
+                    placeholder="seu@email.com"
+                    type="email"
+                    autoComplete="email"
+                    validate={(v) => (!/^\S+@\S+\.\S+$/.test(v) ? "E-mail inválido" : null)}
+                    onSubmit={(value) => {
+                      const updated = { ...answers, email: value };
+                      void submitStep(sessionId, "EMAIL", { email: value });
+                      void advance("EMAIL", updated, value);
+                    }}
+                  />
+                )}
+
+                {currentStep === "COMPANY" && (
+                  <TextFieldStep
+                    label="Empresa"
+                    placeholder="Nome da sua empresa..."
+                    autoComplete="organization"
+                    validate={(v) => (v.length < 2 ? "Informe o nome da empresa" : null)}
+                    onSubmit={(value) => {
+                      const updated = { ...answers, company: value };
+                      void submitStep(sessionId, "COMPANY", { company: value });
+                      void advance("COMPANY", updated, value);
+                    }}
+                  />
+                )}
+
+                {currentStep === "SEGMENT" && (
+                  <SelectDropdown
+                    label="Segmento"
+                    placeholder="Selecione o segmento da sua empresa"
+                    options={SEGMENT_OPTIONS}
+                    onSubmit={(value) => {
+                      const updated = { ...answers, segment: value };
+                      void submitStep(sessionId, "SEGMENT", { segment: value });
+                      void advance("SEGMENT", updated, value);
+                    }}
+                  />
+                )}
+
+                {currentStep === "ROLE" && (
+                  <RoleFullscreenStep
+                    company={answers.company}
+                    onSubmit={(value) => {
+                      const updated = { ...answers, role: value };
+                      void submitStep(sessionId, "ROLE", { role: value });
+                      fbTrack("CompleteRegistration");
+                      void advance("ROLE", updated, value);
+                    }}
+                  />
+                )}
+
+                {currentStep === "REVENUE" && (
+                  <SelectDropdown
+                    label="Faturamento anual"
+                    placeholder="Selecione o faturamento"
+                    options={REVENUE_OPTIONS}
+                    onSubmit={(value) => {
+                      const updated = { ...answers, revenueRange: value };
+                      void submitStep(sessionId, "REVENUE", { revenueRange: value });
+                      void advance("REVENUE", updated, value);
+                    }}
+                  />
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

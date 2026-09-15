@@ -22,7 +22,9 @@ export type PersistedFunnelState = {
   sessionId: string;
   stepIndex: number;
   answers: Record<string, unknown>;
-  chatLog: { role: "bot" | "user"; text: string }[];
+  /** `at` é o instante da mensagem e `read` o double-check — ambos precisam
+   * sobreviver ao recarregamento, senão a conversa volta sem horário. */
+  chatLog: { role: "bot" | "user"; text: string; read?: boolean; at?: number }[];
 };
 
 export function loadFunnelState(): PersistedFunnelState | null {

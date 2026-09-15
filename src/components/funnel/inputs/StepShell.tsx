@@ -24,7 +24,7 @@ export function SubmitArrow({ disabled }: { disabled?: boolean }) {
       type="submit"
       disabled={disabled}
       aria-label="Enviar"
-      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-waz-50 text-waz-10 transition disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:opacity-100 enabled:hover:bg-waz-40"
+      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-waz-50 text-waz-10 transition disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:opacity-100 enabled:hover:bg-waz-40"
     >
       <svg
         viewBox="0 0 24 24"

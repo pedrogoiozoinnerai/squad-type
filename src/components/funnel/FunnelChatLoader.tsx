@@ -7,7 +7,7 @@ const FunnelChat = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="flex min-h-screen w-full items-center justify-center bg-background">
+      <div className="flex h-dvh w-full items-center justify-center bg-background">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-waz-50" />
       </div>
     ),

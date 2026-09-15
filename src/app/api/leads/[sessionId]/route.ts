@@ -14,6 +14,9 @@ export async function PATCH(
   ctx: RouteContext<"/api/leads/[sessionId]">
 ) {
   const { sessionId } = await ctx.params;
+  if (sessionId.length < 10 || sessionId.length > 100) {
+    return NextResponse.json({ error: "Sessão inválida" }, { status: 400 });
+  }
 
   const json = await request.json().catch(() => null);
   const parsedBody = bodySchema.safeParse(json);
@@ -28,10 +31,22 @@ export async function PATCH(
     return NextResponse.json({ error: parsedValue.error.flatten() }, { status: 400 });
   }
 
-  const lead = await prisma.lead.findUnique({ where: { sessionId } });
-  if (!lead) {
-    return NextResponse.json({ error: "Sessão não encontrada" }, { status: 404 });
-  }
+  // O cliente dispara a criação do lead (POST /api/leads) e segue a conversa sem
+  // esperar. Numa rede lenta a primeira resposta pode chegar antes da criação —
+  // então criamos aqui o que faltar, em vez de devolver 404 e perder o dado.
+  // `upsert` com `update: {}` não toca no que já existe.
+  const lead = await prisma.lead.upsert({
+    where: { sessionId },
+    update: {},
+    create: {
+      sessionId,
+      userAgent: request.headers.get("user-agent") ?? undefined,
+      ipAddress:
+        request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+        request.headers.get("x-real-ip") ??
+        undefined,
+    },
+  });
 
   const data: Record<string, unknown> = {};
   const v = parsedValue.data as Record<string, unknown>;
