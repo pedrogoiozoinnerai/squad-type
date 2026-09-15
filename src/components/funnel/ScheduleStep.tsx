@@ -93,6 +93,31 @@ export function ScheduleStep({
     );
   }
 
+  // Tudo que a pessoa já respondeu no funil entra no formulário do Cal.com pronto.
+  // As chaves não são inventadas: são os identificadores dos campos do evento
+  // "Apresentação Squad.com" — `name`, `email`, e as perguntas personalizadas
+  // `company_name` e `attendeePhoneNumber`.
+  //
+  // `metadata[sessionId]` vai em notação de colchetes de propósito. O embed
+  // serializa cada valor com `URLSearchParams.set`, então um objeto aninhado
+  // virava a string "[object Object]" — e o webhook ficava sem a chave que liga
+  // a reserva ao lead, caindo no e-mail como último recurso.
+  const prefill: Record<string, string> = {
+    "metadata[sessionId]": sessionId,
+  };
+  if (answers.fullName) prefill.name = answers.fullName;
+  if (answers.email) prefill.email = answers.email;
+  if (answers.company) prefill.company_name = answers.company;
+  if (answers.phoneNumber) {
+    prefill.attendeePhoneNumber = `${answers.phoneCountryCode ?? "+55"}${answers.phoneNumber}`;
+  }
+  const contexto = [
+    answers.segment && `Segmento: ${answers.segment}`,
+    answers.role && `Cargo: ${answers.role}`,
+    answers.revenueRange && `Faturamento: ${answers.revenueRange}`,
+  ].filter(Boolean);
+  if (contexto.length) prefill.notes = contexto.join(" | ");
+
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-slate-200 bg-white px-4 py-3">
@@ -122,20 +147,7 @@ export function ScheduleStep({
         // O próprio Cal.com ajusta a altura do iframe conforme o conteúdo; o
         // valor abaixo é só o espaço reservado enquanto ele carrega.
         style={{ width: "100%", minHeight: "420px" }}
-        config={{
-          name: answers.fullName ?? "",
-          email: answers.email ?? "",
-          notes: [
-            answers.company && `Empresa: ${answers.company}`,
-            answers.segment && `Segmento: ${answers.segment}`,
-            answers.role && `Cargo: ${answers.role}`,
-          ]
-            .filter(Boolean)
-            .join(" | "),
-          // Ecoado de volta no payload do webhook (BOOKING_CREATED) — é assim que
-          // correlacionamos a reserva do Cal.com com o lead certo no nosso banco.
-          metadata: { sessionId },
-        }}
+        config={prefill}
       />
     </div>
   );
