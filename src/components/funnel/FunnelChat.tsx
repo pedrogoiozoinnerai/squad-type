@@ -26,7 +26,7 @@ import { TextFieldStep } from "./inputs/TextFieldStep";
 import { PhoneStep } from "./inputs/PhoneStep";
 import { SelectDropdown } from "./inputs/SelectDropdown";
 import { RoleFullscreenStep } from "./inputs/RoleFullscreenStep";
-import { ScheduleStep } from "./ScheduleStep";
+import { ScheduleStep, type DadosAgendamento } from "./ScheduleStep";
 
 /** `at` é o instante em que a mensagem entrou na conversa. Guardar isso na
  * mensagem (em vez de chamar `new Date()` na hora de desenhar) é o que impede
@@ -183,9 +183,22 @@ export function FunnelChat() {
   );
 
   const handleScheduled = useCallback(
-    (payload: { calBookingUid: string; scheduledAt: string; meetingLocation?: string }) => {
-      setAnswers((a) => ({ ...a, scheduledConfirmed: true }));
-      void submitSchedule(sessionId, payload);
+    (payload: DadosAgendamento) => {
+      setAnswers((a) => ({
+        ...a,
+        scheduledConfirmed: true,
+        scheduledAt: payload.scheduledAt,
+        scheduledEndAt: payload.scheduledEndAt,
+        meetingLocation: payload.meetingLocation,
+        meetingTitle: payload.meetingTitle,
+      }));
+      // O endpoint valida três campos; horário de término e título ficam só no
+      // cliente, que é quem monta o link da agenda.
+      void submitSchedule(sessionId, {
+        calBookingUid: payload.calBookingUid,
+        scheduledAt: payload.scheduledAt,
+        meetingLocation: payload.meetingLocation,
+      });
       fbTrack("Schedule");
     },
     [sessionId]

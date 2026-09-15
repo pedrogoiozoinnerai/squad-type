@@ -128,6 +128,12 @@ export type StepAnswers = {
   revenueRange?: string;
   /** true assim que o Cal.com confirma o agendamento — evita reabrir o calendário ao retomar a sessão. */
   scheduledConfirmed?: boolean;
+  /** Dados da reunião confirmada, em ISO. Guardados para reconstruir o link do
+   * Google Agenda se a pessoa recarregar a página depois de agendar. */
+  scheduledAt?: string;
+  scheduledEndAt?: string;
+  meetingLocation?: string;
+  meetingTitle?: string;
 };
 
 // --- Roteiro de mensagens do bot (personalizado conforme respostas anteriores) ---
