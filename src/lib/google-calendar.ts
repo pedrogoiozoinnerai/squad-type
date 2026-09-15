@@ -1,7 +1,7 @@
 /**
  * Link de "salvar na agenda" do Google.
  *
- * O Cal.com manda o convite por e-mail, mas entre agendar e o e-mail chegar a
+ * O CRM manda o convite por e-mail, mas entre agendar e o e-mail chegar a
  * pessoa já saiu da página — e quem não tem o Google Agenda conectado à caixa
  * de entrada nunca vê o compromisso aparecer sozinho. Este link resolve isso no
  * momento em que a intenção ainda está quente.
@@ -11,7 +11,7 @@
 
 export type ReuniaoAgendada = {
   inicio: Date;
-  /** Quando o Cal.com não informa, assumimos a duração padrão do evento. */
+  /** Quando a duração não vem junto, assumimos a padrão da sessão. */
   fim: Date;
   titulo: string;
   descricao?: string;

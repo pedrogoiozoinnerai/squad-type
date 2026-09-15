@@ -65,7 +65,13 @@ model Lead {
   // Passo 7 — faturamento anual
   revenueRange String?
 
-  // Passo 8 — agendamento (Cal.com)
+  // Passo 8 — agendamento.
+  //
+  // A reserva passou a ser feita no CRM (sessões coletivas do MeetSquad); as
+  // três colunas `cal*` ficam por enquanto porque o cron do CRM as lê por SQL a
+  // cada dez minutos. Para leads novos elas nascem nulas.
+  crmMeetingId    String?
+  crmConviteUrl   String?
   calBookingUid   String?
   scheduledAt     DateTime?
   meetingLocation String?

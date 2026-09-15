@@ -126,7 +126,7 @@ export type StepAnswers = {
   segment?: string;
   role?: string;
   revenueRange?: string;
-  /** true assim que o Cal.com confirma o agendamento — evita reabrir o calendário ao retomar a sessão. */
+  /** true assim que a vaga é reservada no CRM — evita reabrir a lista de sessões ao retomar. */
   scheduledConfirmed?: boolean;
   /** Dados da reunião confirmada, em ISO. Guardados para reconstruir o link do
    * Google Agenda se a pessoa recarregar a página depois de agendar. */

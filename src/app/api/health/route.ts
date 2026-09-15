@@ -44,8 +44,8 @@ export async function GET() {
     DIRECT_URL: Boolean(process.env.DIRECT_URL),
     DB_SCHEMA: process.env.DB_SCHEMA || "(ausente, usando padrão)",
     NEXT_PUBLIC_BRAND_NAME: Boolean(process.env.NEXT_PUBLIC_BRAND_NAME),
-    NEXT_PUBLIC_CAL_LINK: Boolean(process.env.NEXT_PUBLIC_CAL_LINK),
-    CAL_WEBHOOK_SECRET: Boolean(process.env.CAL_WEBHOOK_SECRET),
+    CRM_URL: Boolean(process.env.CRM_URL),
+    FUNIL_API_KEY: Boolean(process.env.FUNIL_API_KEY),
   };
 
   let banco: { ok: boolean; schema: string; leads?: number; erro?: string };

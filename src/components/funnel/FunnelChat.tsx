@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  BRAND_NAME,
   REVENUE_OPTIONS,
   SEGMENT_OPTIONS,
   STEP_ORDER,
@@ -17,7 +18,7 @@ import { extractDdd, lookupDdd } from "@/lib/ddd";
 import { formatBRPhone } from "@/lib/phone-format";
 import { getOrCreateSessionId, loadFunnelState, saveFunnelState } from "@/lib/session";
 import { captureAttribution } from "@/lib/attribution";
-import { initLead, submitSchedule, submitStep } from "@/lib/api-client";
+import { initLead, submitStep } from "@/lib/api-client";
 import { fbAdvancedMatch, fbTrack } from "@/lib/fb-pixel";
 import { ProgressBar } from "./ProgressBar";
 import { BotBubble, UserBubble } from "./ChatBubble";
@@ -26,7 +27,7 @@ import { TextFieldStep } from "./inputs/TextFieldStep";
 import { PhoneStep } from "./inputs/PhoneStep";
 import { SelectDropdown } from "./inputs/SelectDropdown";
 import { RoleFullscreenStep } from "./inputs/RoleFullscreenStep";
-import { ScheduleStep, type DadosAgendamento } from "./ScheduleStep";
+import { SessoesDisponiveis, type DadosAgendamento } from "./SessoesDisponiveis";
 
 /** `at` é o instante em que a mensagem entrou na conversa. Guardar isso na
  * mensagem (em vez de chamar `new Date()` na hora de desenhar) é o que impede
@@ -182,31 +183,26 @@ export function FunnelChat() {
     [pushBotMessages, markLastUserMessageRead]
   );
 
-  const handleScheduled = useCallback(
-    (payload: DadosAgendamento) => {
-      setAnswers((a) => ({
-        ...a,
-        scheduledConfirmed: true,
-        scheduledAt: payload.scheduledAt,
-        scheduledEndAt: payload.scheduledEndAt,
-        meetingLocation: payload.meetingLocation,
-        meetingTitle: payload.meetingTitle,
-      }));
-      // O endpoint valida três campos; horário de término e título ficam só no
-      // cliente, que é quem monta o link da agenda.
-      void submitSchedule(sessionId, {
-        calBookingUid: payload.calBookingUid,
-        scheduledAt: payload.scheduledAt,
-        meetingLocation: payload.meetingLocation,
-      });
-      fbTrack("Schedule");
-    },
-    [sessionId]
-  );
+  // A reserva já foi gravada pelo servidor em /api/leads/[sessionId]/reservar —
+  // aqui só guardamos o suficiente para a confirmação sobreviver a um
+  // recarregamento e para montar o convite da agenda.
+  const handleAgendado = useCallback((dados: DadosAgendamento) => {
+    const comeca = new Date(dados.comecaEm);
+    const termina = new Date(comeca.getTime() + dados.duracaoMin * 60_000);
+    setAnswers((a) => ({
+      ...a,
+      scheduledConfirmed: true,
+      scheduledAt: dados.comecaEm,
+      scheduledEndAt: termina.toISOString(),
+      meetingLocation: dados.convite,
+      meetingTitle: `Apresentação ${BRAND_NAME}`,
+    }));
+    fbTrack("Schedule");
+  }, []);
 
   const mostrarEntrada = ready && !busy;
-  // O calendário do Cal.com passa de mil pixels de altura: ele pertence ao fluxo
-  // rolável junto das mensagens, não à barra fixa do rodapé.
+  // A lista de sessões é alta e rola por dentro: ela pertence ao fluxo das
+  // mensagens, não à barra fixa do rodapé.
   const passoAgendamento = currentStep === "SCHEDULE";
 
   return (
@@ -233,11 +229,11 @@ export function FunnelChat() {
         {typing && <TypingIndicator />}
 
         {mostrarEntrada && passoAgendamento && (
-          <ScheduleStep
+          <SessoesDisponiveis
             sessionId={sessionId}
             answers={answers}
-            alreadyScheduled={answers.scheduledConfirmed}
-            onScheduled={handleScheduled}
+            jaAgendado={answers.scheduledConfirmed}
+            onAgendado={handleAgendado}
           />
         )}
       </div>
