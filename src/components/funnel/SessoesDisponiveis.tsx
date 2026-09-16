@@ -45,37 +45,83 @@ const fmtChaveDia = new Intl.DateTimeFormat("en-CA", {
   day: "2-digit",
 });
 
-/** Rótulo curto do chip: "hoje", "amanhã", ou "qui 18/09". */
-const fmtDiaCurto = new Intl.DateTimeFormat("pt-BR", {
+const fmtMes = new Intl.DateTimeFormat("pt-BR", { timeZone: TZ, month: "long" });
+const fmtAno = new Intl.DateTimeFormat("pt-BR", { timeZone: TZ, year: "numeric" });
+const fmtDiaMes = new Intl.DateTimeFormat("pt-BR", {
   timeZone: TZ,
-  weekday: "short",
-  day: "2-digit",
-  month: "2-digit",
+  day: "numeric",
+  month: "long",
 });
+const fmtSemana = new Intl.DateTimeFormat("pt-BR", { timeZone: TZ, weekday: "long" });
 
-type Dia = { chave: string; rotulo: string; curto: string; sessoes: Sessao[] };
+/** Sobe só a primeira letra — em português o resto fica minúsculo. */
+function inicialMaiuscula(texto: string): string {
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
+}
+
+/** "Setembro 2026" */
+function rotuloDoMes(mes: string): string {
+  const d = aoMeioDia(`${mes}-01`);
+  return `${inicialMaiuscula(fmtMes.format(d))} ${fmtAno.format(d)}`;
+}
+
+/** "16 de setembro, quarta-feira" — dia primeiro, como se fala. */
+function rotuloDoDia(chave: string): string {
+  const d = aoMeioDia(chave);
+  return `${fmtDiaMes.format(d)}, ${fmtSemana.format(d)}`;
+}
+
+/** Iniciais dos dias da semana, do domingo ao sábado — a ordem que a grade desenha. */
+const INICIAIS = ["D", "S", "T", "Q", "Q", "S", "S"];
 
 /**
- * Agrupa por dia civil de São Paulo.
+ * Meio-dia UTC do dia informado.
  *
- * Passou a devolver a CHAVE junto porque a lista virou dois passos: com 12
- * horários por dia e a agenda indo até o fim do mês, empilhar tudo dava ~170
- * botões num scroll de 420px. Ninguém escolhe assim no celular.
+ * Toda conta de calendário passa por aqui de propósito. São Paulo é UTC-3, então
+ * meia-noite UTC já é o dia anterior lá; meio-dia fica longe das duas bordas e
+ * sobrevive inclusive a um horário de verão que volte.
  */
-function agruparPorDia(sessoes: Sessao[], hojeChave: string, amanhaChave: string): Dia[] {
-  const dias = new Map<string, Dia>();
+function aoMeioDia(chave: string): Date {
+  return new Date(`${chave}T12:00:00Z`);
+}
+
+/** "2026-09-16" -> "2026-09" */
+function mesDe(chave: string): string {
+  return chave.slice(0, 7);
+}
+
+function mesVizinho(mes: string, passo: number): string {
+  const [ano, m] = mes.split("-").map(Number);
+  const d = new Date(Date.UTC(ano, m - 1 + passo, 1, 12));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+/**
+ * As células do mês: nulos para alinhar a primeira semana, depois cada dia.
+ * `getUTCDay` num instante de meio-dia devolve o dia da semana civil correto.
+ */
+function gradeDoMes(mes: string): (string | null)[] {
+  const [ano, m] = mes.split("-").map(Number);
+  const primeiro = new Date(Date.UTC(ano, m - 1, 1, 12));
+  const diasNoMes = new Date(Date.UTC(ano, m, 0, 12)).getUTCDate();
+  const celulas: (string | null)[] = Array(primeiro.getUTCDay()).fill(null);
+  for (let d = 1; d <= diasNoMes; d++) {
+    celulas.push(`${mes}-${String(d).padStart(2, "0")}`);
+  }
+  return celulas;
+}
+
+/** Sessões agrupadas pelo dia civil de São Paulo em que acontecem. */
+function porDia(sessoes: Sessao[]): Map<string, Sessao[]> {
+  const mapa = new Map<string, Sessao[]>();
   for (const s of sessoes) {
     const d = new Date(s.inicioEm);
     if (Number.isNaN(d.getTime())) continue;
     const chave = fmtChaveDia.format(d);
-    if (!dias.has(chave)) {
-      const curto =
-        chave === hojeChave ? "hoje" : chave === amanhaChave ? "amanhã" : fmtDiaCurto.format(d);
-      dias.set(chave, { chave, rotulo: fmtDiaCompleto.format(d), curto, sessoes: [] });
-    }
-    dias.get(chave)!.sessoes.push(s);
+    if (!mapa.has(chave)) mapa.set(chave, []);
+    mapa.get(chave)!.push(s);
   }
-  return [...dias.values()];
+  return mapa;
 }
 
 /** Devolve as sessões, ou `null` quando a agenda não respondeu. */
@@ -106,6 +152,7 @@ export function SessoesDisponiveis({
   const [escolhida, setEscolhida] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [diaEscolhido, setDiaEscolhido] = useState<string | null>(null);
+  const [mesEscolhido, setMesEscolhido] = useState<string | null>(null);
 
   // Trava sincrônica: `escolhida` só vale no render seguinte, e dois toques
   // rápidos cabem antes disso. Duas reservas seguidas não criariam duas
@@ -113,15 +160,17 @@ export function SessoesDisponiveis({
   // eventos de pixel e uma tela piscando.
   const emVoo = useRef(false);
 
-  // "Hoje" e "amanhã" saem do relógio, que muda sozinho: lê-lo durante o render
-  // tornaria o componente impuro (dois renders seguidos poderiam discordar sobre
-  // que dia é hoje). Uma vez na montagem basta — ninguém atravessa a meia-noite
-  // com esta tela aberta, e se atravessar o rótulo errado é inofensivo perto de
-  // uma lista que se reordena sozinha embaixo do dedo.
-  const [chavesRelativas] = useState(() => ({
-    hoje: fmtChaveDia.format(new Date()),
-    amanha: fmtChaveDia.format(new Date(Date.now() + 86_400_000)),
-  }));
+  // O relógio é lido uma vez, na montagem: consultá-lo durante o render tornaria
+  // o componente impuro — dois renders seguidos poderiam discordar sobre que
+  // horas são. Ninguém atravessa a meia-noite com esta tela aberta.
+  const [agora] = useState(() => {
+    const d = new Date();
+    const diaDaSemana = new Intl.DateTimeFormat("pt-BR", {
+      timeZone: TZ,
+      weekday: "long",
+    }).format(d);
+    return `${diaDaSemana}, ${fmtHora.format(d)}`;
+  });
 
   const aplicar = useCallback((lista: Sessao[] | null) => {
     setFalhaAoCarregar(lista === null);
@@ -232,16 +281,40 @@ export function SessoesDisponiveis({
     );
   }
 
-  const dias = agruparPorDia(sessoes, chavesRelativas.hoje, chavesRelativas.amanha);
-  const dia = dias.find((d) => d.chave === diaEscolhido) ?? dias[0];
+  const dias = porDia(sessoes);
+  const comVaga = [...dias.keys()].sort();
+  const diaAtivo = diaEscolhido && dias.has(diaEscolhido) ? diaEscolhido : comVaga[0];
+  const mesAtivo = mesEscolhido ?? mesDe(diaAtivo);
+  const grade = gradeDoMes(mesAtivo);
+  const horarios = dias.get(diaAtivo) ?? [];
+
+  // Navegar para antes do primeiro mês com vaga, ou depois do último, só levaria
+  // a um calendário vazio — então essa navegação simplesmente não existe.
+  const temMesAnterior = comVaga.some((d) => mesDe(d) < mesAtivo);
+  const temProximoMes = comVaga.some((d) => mesDe(d) > mesAtivo);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-200 px-4 py-3">
-        <p className="text-sm font-semibold text-slate-900">Escolha o melhor horário</p>
-        <p className="text-xs text-slate-500">
-          Apresentação ao vivo com o time {BRAND_NAME} · horário de Brasília
-        </p>
+      <div className="flex items-center gap-2.5 bg-waz-40 px-4 py-3 text-white">
+        <svg
+          viewBox="0 0 24 24"
+          width="18"
+          height="18"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="shrink-0"
+          aria-hidden
+        >
+          <rect x="3" y="4" width="18" height="18" rx="2" />
+          <path d="M16 2v4M8 2v4M3 10h18" />
+        </svg>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold">Agenda {BRAND_NAME}</p>
+          <p className="truncate text-xs text-white/80">Para sua reunião gratuita</p>
+        </div>
       </div>
 
       {aviso && (
@@ -250,92 +323,164 @@ export function SessoesDisponiveis({
         </p>
       )}
 
-      {/* Passo 1: o dia. Uma fileira que rola na horizontal, com encaixe —
-          no celular o polegar percorre os dias sem sair da tela. */}
-      <div
-        role="tablist"
-        aria-label="Dias com horário disponível"
-        className="flex snap-x snap-mandatory gap-2 overflow-x-auto border-b border-slate-200 px-4 py-3"
-      >
-        {dias.map((d) => {
-          const ativo = d.chave === dia?.chave;
-          return (
-            <button
-              key={d.chave}
-              type="button"
-              role="tab"
-              aria-selected={ativo}
-              onClick={() => setDiaEscolhido(d.chave)}
-              className={`flex min-h-11 shrink-0 snap-start items-center gap-1.5 rounded-full border px-3.5 text-sm font-semibold transition ${
-                ativo
-                  ? "border-waz-50 bg-waz-50 text-white"
-                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              <span className="capitalize">{d.curto}</span>
-              <span
-                className={`text-xs font-medium ${ativo ? "text-white/80" : "text-slate-400"}`}
-              >
-                {d.sessoes.length}
-              </span>
-            </button>
-          );
-        })}
+      <div className="flex justify-center px-4 pt-4">
+        <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs text-slate-600">
+          Hoje é {agora}
+        </span>
       </div>
 
-      {/* Passo 2: a hora. Doze pastilhas cabem numa tela sem rolagem — era o
-          ponto de separar os dois passos. */}
-      {dia && (
-        <div className="px-4 py-4">
-          <p className="mb-2.5 text-xs font-semibold tracking-wide text-slate-500 uppercase">
-            {dia.rotulo}
-          </p>
-          <div className="grid grid-cols-3 gap-2">
-            {dia.sessoes.map((s) => {
-              const reservando = escolhida === s.id;
-              const ultimasVagas = s.vagas <= 3;
+      <div className="flex items-center justify-between px-4 py-3">
+        <SetaMes
+          direcao="anterior"
+          disponivel={temMesAnterior}
+          onClick={() => setMesEscolhido(mesVizinho(mesAtivo, -1))}
+        />
+        <p className="text-[15px] font-semibold text-slate-900">{rotuloDoMes(mesAtivo)}</p>
+        <SetaMes
+          direcao="proximo"
+          disponivel={temProximoMes}
+          onClick={() => setMesEscolhido(mesVizinho(mesAtivo, 1))}
+        />
+      </div>
+
+      <div className="px-4">
+        <div className="rounded-2xl border border-slate-200 px-2 py-3">
+          <div className="grid grid-cols-7">
+            {INICIAIS.map((inicial, i) => (
+              <span
+                key={i}
+                aria-hidden
+                className="py-1 text-center text-[11px] font-medium text-slate-400"
+              >
+                {inicial}
+              </span>
+            ))}
+          </div>
+          <div className="grid grid-cols-7">
+            {grade.map((chave, i) => {
+              if (!chave) return <span key={`vazio-${i}`} />;
+              const numero = Number(chave.slice(-2));
+
+              // Dia sem turma aberta continua visível, apagado: o calendário
+              // precisa mostrar o mês inteiro para a pessoa se localizar.
+              if (!dias.has(chave)) {
+                return (
+                  <span
+                    key={chave}
+                    className="flex h-11 items-center justify-center text-sm text-slate-300"
+                  >
+                    {numero}
+                  </span>
+                );
+              }
+
+              const ativo = chave === diaAtivo;
               return (
                 <button
-                  key={s.id}
+                  key={chave}
                   type="button"
-                  disabled={escolhida !== null}
-                  onClick={() => void escolher(s)}
-                  className="flex min-h-14 flex-col items-center justify-center rounded-xl border border-slate-200 bg-white px-1 py-2 shadow-sm transition hover:border-waz-50 hover:bg-slate-50 active:bg-slate-100 disabled:opacity-60"
+                  aria-pressed={ativo}
+                  aria-label={fmtDiaCompleto.format(aoMeioDia(chave))}
+                  onClick={() => setDiaEscolhido(chave)}
+                  className="flex h-11 items-center justify-center"
                 >
-                  {reservando ? (
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-200 border-t-waz-50" />
-                  ) : (
-                    <>
-                      <span className="text-[15px] font-semibold text-slate-900">
-                        {fmtHora.format(new Date(s.inicioEm))}
-                      </span>
-                      <span
-                        className={`text-[11px] ${ultimasVagas ? "text-amber-600" : "text-slate-500"}`}
-                      >
-                        {s.vagas === 1 ? "última vaga" : `${s.vagas} vagas`}
-                      </span>
-                    </>
-                  )}
+                  <span
+                    className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold transition ${
+                      ativo ? "bg-waz-40 text-white shadow-sm" : "text-slate-900 hover:bg-slate-100"
+                    }`}
+                  >
+                    {numero}
+                  </span>
                 </button>
               );
             })}
           </div>
-          <p className="mt-3 text-center text-xs text-slate-500">
-            {dia.sessoes[0]?.duracaoMin ?? 45} minutos · ao vivo
-          </p>
         </div>
-      )}
+      </div>
+
+      <div className="px-4 py-4">
+        <div className="mb-2.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+          <p className="text-sm text-slate-600">Horários para {rotuloDoDia(diaAtivo)}</p>
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
+            Horário de Brasília
+          </span>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2">
+          {horarios.map((s) => {
+            const reservando = escolhida === s.id;
+            const ultimasVagas = s.vagas <= 3;
+            return (
+              <button
+                key={s.id}
+                type="button"
+                disabled={escolhida !== null}
+                onClick={() => void escolher(s)}
+                className="flex min-h-12 flex-col items-center justify-center rounded-xl border border-slate-200 bg-white px-1 py-2 text-slate-900 shadow-sm transition hover:border-waz-50 hover:bg-slate-50 active:bg-slate-100 disabled:opacity-60"
+              >
+                {reservando ? (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-200 border-t-waz-50" />
+                ) : (
+                  <>
+                    <span className="text-[15px] font-semibold">
+                      {fmtHora.format(new Date(s.inicioEm))}
+                    </span>
+                    {/* A escassez só aparece quando é verdade: repetir "20 vagas"
+                        em cada pastilha vira ruído e não informa nada. */}
+                    {ultimasVagas && (
+                      <span className="text-[11px] text-amber-600">
+                        {s.vagas === 1 ? "última vaga" : `${s.vagas} vagas`}
+                      </span>
+                    )}
+                  </>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        <p className="mt-3 text-center text-xs text-slate-500">
+          Toque em um horário para agendar · {horarios[0]?.duracaoMin ?? 45} minutos ao vivo
+        </p>
+      </div>
     </div>
   );
 }
 
-/**
- * Confirmação: o que a pessoa precisa fazer a seguir, em duas ações.
- *
- * Entrar na sala é a primeira, porque é o que ela veio buscar. Salvar na agenda
- * é a segunda, e tentamos abrir sozinhos numa aba nova — sem tirá-la daqui, que
- * é onde o link da sala está guardado.
- */
+function SetaMes({
+  direcao,
+  disponivel,
+  onClick,
+}: {
+  direcao: "anterior" | "proximo";
+  disponivel: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={!disponivel}
+      onClick={onClick}
+      aria-label={direcao === "anterior" ? "Mês anterior" : "Próximo mês"}
+      className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition hover:bg-slate-200 disabled:opacity-30 disabled:hover:bg-slate-100"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        width="16"
+        height="16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        <path d={direcao === "anterior" ? "M15 6l-6 6 6 6" : "M9 6l6 6-6 6"} />
+      </svg>
+    </button>
+  );
+}
+
 function Confirmacao({ answers }: { answers: StepAnswers }) {
   const inicio = answers.scheduledAt ? new Date(answers.scheduledAt) : null;
   const inicioValido = inicio && !Number.isNaN(inicio.getTime()) ? inicio : null;
@@ -386,7 +531,8 @@ function Confirmacao({ answers }: { answers: StepAnswers }) {
           <p className="text-[15px] font-semibold text-slate-900">Vaga garantida!</p>
           {inicioValido && (
             <p className="mt-0.5 text-sm text-slate-600">
-              {fmtDiaCompleto.format(inicioValido)} às {fmtHora.format(inicioValido)}
+              {inicialMaiuscula(fmtDiaCompleto.format(inicioValido))} às{" "}
+              {fmtHora.format(inicioValido)}
             </p>
           )}
           <p className="mt-1 text-sm text-slate-500">
