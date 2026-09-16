@@ -30,6 +30,8 @@ export type SessaoDisponivel = {
 export type Disponibilidade = {
   timezone: string;
   sessoes: SessaoDisponivel[];
+  /// ISO. Nulo quando o CRM é antigo e ainda não manda.
+  horizonteAte?: string | null;
 };
 
 export type DadosDaReserva = {
@@ -92,6 +94,11 @@ export async function buscarDisponibilidade(): Promise<Disponibilidade> {
   return {
     timezone: corpo.timezone ?? "America/Sao_Paulo",
     sessoes: Array.isArray(corpo.sessoes) ? corpo.sessoes : [],
+    // Até quando a agenda vai. Montar um objeto novo aqui é o certo — não
+    // repassar cru o que veio de fora —, mas o campo tinha de entrar na lista:
+    // sem ele a tela não consegue dizer "aberta até 31 de outubro" e a pessoa
+    // rola a fileira de dias procurando um fim que não é anunciado.
+    horizonteAte: typeof corpo.horizonteAte === "string" ? corpo.horizonteAte : null,
   };
 }
 
