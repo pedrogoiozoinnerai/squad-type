@@ -5,7 +5,6 @@ import {
   BRAND_NAME,
   REVENUE_OPTIONS,
   SEGMENT_OPTIONS,
-  STEP_ORDER,
   firstName,
   introMessages,
   messagesForStep,
@@ -16,7 +15,7 @@ import {
 } from "@/lib/funnel";
 import { extractDdd, lookupDdd } from "@/lib/ddd";
 import { formatBRPhone } from "@/lib/phone-format";
-import { getOrCreateSessionId, loadFunnelState, saveFunnelState } from "@/lib/session";
+import { novaSessao } from "@/lib/session";
 import { captureAttribution } from "@/lib/attribution";
 import { initLead, submitStep } from "@/lib/api-client";
 import { fbAdvancedMatch, fbTrack } from "@/lib/fb-pixel";
@@ -42,21 +41,16 @@ function readCookie(name: string): string | null {
 
 export function FunnelChat() {
   // Este componente só é montado no client (ver dynamic import em app/page.tsx
-  // com ssr:false), então é seguro ler localStorage já no estado inicial.
-  const [sessionId] = useState<string>(() => getOrCreateSessionId());
-  const [resumed] = useState(() => {
-    const persisted = loadFunnelState();
-    return persisted && persisted.sessionId === sessionId ? persisted : null;
-  });
-  const [chatLog, setChatLog] = useState<ChatMessage[]>(() => resumed?.chatLog ?? []);
-  const [answers, setAnswers] = useState<StepAnswers>(
-    () => (resumed?.answers as StepAnswers) ?? {}
-  );
-  const [currentStep, setCurrentStep] = useState<StepKey>(() =>
-    resumed ? STEP_ORDER[resumed.stepIndex] ?? "NAME" : "NAME"
-  );
+  // com ssr:false), então é seguro tocar em `window` já no estado inicial.
+  //
+  // Nada é retomado: quem recarrega ou volta depois começa a conversa do zero,
+  // com uma sessão nova. Foi decisão de produto, não descuido.
+  const [sessionId] = useState<string>(() => novaSessao());
+  const [chatLog, setChatLog] = useState<ChatMessage[]>([]);
+  const [answers, setAnswers] = useState<StepAnswers>({});
+  const [currentStep, setCurrentStep] = useState<StepKey>("NAME");
   const [typing, setTyping] = useState(false);
-  const [ready, setReady] = useState(() => !!resumed);
+  const [ready, setReady] = useState(false);
 
   // `busy` cobre a transição inteira de um passo: começa no envio da resposta e
   // só termina quando o bot acaba de falar e o passo seguinte já está no ar.
@@ -122,26 +116,13 @@ export function FunnelChat() {
       if (fbp || fbc) void initLead({ ...identificacao, fbp, fbc });
     }, 3000);
 
-    if (resumed) return () => window.clearTimeout(tentarClickIds);
-
     void (async () => {
       await pushBotMessages(introMessages());
       setReady(true);
     })();
 
     return () => window.clearTimeout(tentarClickIds);
-  }, [resumed, sessionId, pushBotMessages]);
-
-  // Persiste o progresso a cada mudança relevante (permite retomar ao recarregar).
-  useEffect(() => {
-    if (!ready) return;
-    saveFunnelState({
-      sessionId,
-      stepIndex: indexOfStep(currentStep),
-      answers,
-      chatLog,
-    });
-  }, [sessionId, ready, currentStep, answers, chatLog]);
+  }, [sessionId, pushBotMessages]);
 
   // Marca a última mensagem do usuário como lida (setinha azul) — feito com um
   // pequeno atraso, dissociado da resposta do bot, pra imitar o double-check

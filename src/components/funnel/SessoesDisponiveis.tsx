@@ -113,6 +113,16 @@ export function SessoesDisponiveis({
   // eventos de pixel e uma tela piscando.
   const emVoo = useRef(false);
 
+  // "Hoje" e "amanhã" saem do relógio, que muda sozinho: lê-lo durante o render
+  // tornaria o componente impuro (dois renders seguidos poderiam discordar sobre
+  // que dia é hoje). Uma vez na montagem basta — ninguém atravessa a meia-noite
+  // com esta tela aberta, e se atravessar o rótulo errado é inofensivo perto de
+  // uma lista que se reordena sozinha embaixo do dedo.
+  const [chavesRelativas] = useState(() => ({
+    hoje: fmtChaveDia.format(new Date()),
+    amanha: fmtChaveDia.format(new Date(Date.now() + 86_400_000)),
+  }));
+
   const aplicar = useCallback((lista: Sessao[] | null) => {
     setFalhaAoCarregar(lista === null);
     setSessoes(lista ?? []);
@@ -222,9 +232,7 @@ export function SessoesDisponiveis({
     );
   }
 
-  const hojeChave = fmtChaveDia.format(new Date());
-  const amanhaChave = fmtChaveDia.format(new Date(Date.now() + 86_400_000));
-  const dias = agruparPorDia(sessoes, hojeChave, amanhaChave);
+  const dias = agruparPorDia(sessoes, chavesRelativas.hoje, chavesRelativas.amanha);
   const dia = dias.find((d) => d.chave === diaEscolhido) ?? dias[0];
 
   return (
