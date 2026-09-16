@@ -108,11 +108,15 @@ export const stepValueSchemas = {
   REVENUE: z.object({
     revenueRange: z.enum(REVENUE_OPTIONS),
   }),
-  SCHEDULE: z.object({
-    calBookingUid: z.string().trim().min(1),
-    scheduledAt: z.string().trim().min(1),
-    meetingLocation: z.string().trim().optional(),
-  }),
+  // O agendamento NÃO passa por aqui: quem reserva é
+  // `POST /api/leads/[sessionId]/reservar`, que fala com o CRM e grava
+  // `crmMeetingId`, `crmConviteUrl` e `scheduledAt` de uma vez.
+  //
+  // A chave continua existindo porque `satisfies Record<StepKey, …>` exige
+  // uma por passo — e o valor antigo pedia `calBookingUid`, campo que o Cal.com
+  // levou embora. Qualquer coisa enviada aqui é recusada antes da validação,
+  // com uma mensagem que diz para onde ir.
+  SCHEDULE: z.object({}).loose(),
 } satisfies Record<StepKey, z.ZodType>;
 
 export type StepAnswers = {

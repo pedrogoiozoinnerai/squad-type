@@ -35,7 +35,7 @@ export async function GET() {
     regiao: process.env.VERCEL_REGION ?? "?",
     totalDeVariaveis: Object.keys(process.env).length,
     nossasChaves: Object.keys(process.env)
-      .filter((k) => /^(DATABASE_URL|DIRECT_URL|DB_SCHEMA|NEXT_PUBLIC_|CAL_)/.test(k))
+      .filter((k) => /^(DATABASE_URL|DIRECT_URL|DB_SCHEMA|NEXT_PUBLIC_)/.test(k))
       .sort(),
   };
 

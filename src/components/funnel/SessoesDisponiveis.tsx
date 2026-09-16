@@ -45,13 +45,34 @@ const fmtChaveDia = new Intl.DateTimeFormat("en-CA", {
   day: "2-digit",
 });
 
-function agruparPorDia(sessoes: Sessao[]) {
-  const dias = new Map<string, { rotulo: string; sessoes: Sessao[] }>();
+/** Rótulo curto do chip: "hoje", "amanhã", ou "qui 18/09". */
+const fmtDiaCurto = new Intl.DateTimeFormat("pt-BR", {
+  timeZone: TZ,
+  weekday: "short",
+  day: "2-digit",
+  month: "2-digit",
+});
+
+type Dia = { chave: string; rotulo: string; curto: string; sessoes: Sessao[] };
+
+/**
+ * Agrupa por dia civil de São Paulo.
+ *
+ * Passou a devolver a CHAVE junto porque a lista virou dois passos: com 12
+ * horários por dia e a agenda indo até o fim do mês, empilhar tudo dava ~170
+ * botões num scroll de 420px. Ninguém escolhe assim no celular.
+ */
+function agruparPorDia(sessoes: Sessao[], hojeChave: string, amanhaChave: string): Dia[] {
+  const dias = new Map<string, Dia>();
   for (const s of sessoes) {
     const d = new Date(s.inicioEm);
     if (Number.isNaN(d.getTime())) continue;
     const chave = fmtChaveDia.format(d);
-    if (!dias.has(chave)) dias.set(chave, { rotulo: fmtDiaCompleto.format(d), sessoes: [] });
+    if (!dias.has(chave)) {
+      const curto =
+        chave === hojeChave ? "hoje" : chave === amanhaChave ? "amanhã" : fmtDiaCurto.format(d);
+      dias.set(chave, { chave, rotulo: fmtDiaCompleto.format(d), curto, sessoes: [] });
+    }
     dias.get(chave)!.sessoes.push(s);
   }
   return [...dias.values()];
@@ -84,6 +105,7 @@ export function SessoesDisponiveis({
   const [falhaAoCarregar, setFalhaAoCarregar] = useState(false);
   const [escolhida, setEscolhida] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [diaEscolhido, setDiaEscolhido] = useState<string | null>(null);
 
   // Trava sincrônica: `escolhida` só vale no render seguinte, e dois toques
   // rápidos cabem antes disso. Duas reservas seguidas não criariam duas
@@ -94,6 +116,13 @@ export function SessoesDisponiveis({
   const aplicar = useCallback((lista: Sessao[] | null) => {
     setFalhaAoCarregar(lista === null);
     setSessoes(lista ?? []);
+    // Preserva o dia que a pessoa já tinha escolhido, se ele ainda tiver vaga.
+    // Perder o dia numa corrida ("lotou enquanto você escolhia") seria pior
+    // que a lista achatada de antes: ela voltaria ao começo do mês.
+    setDiaEscolhido((atual) => {
+      if (!atual || !lista) return null;
+      return lista.some((s) => fmtChaveDia.format(new Date(s.inicioEm)) === atual) ? atual : null;
+    });
   }, []);
 
   useEffect(() => {
@@ -193,6 +222,11 @@ export function SessoesDisponiveis({
     );
   }
 
+  const hojeChave = fmtChaveDia.format(new Date());
+  const amanhaChave = fmtChaveDia.format(new Date(Date.now() + 86_400_000));
+  const dias = agruparPorDia(sessoes, hojeChave, amanhaChave);
+  const dia = dias.find((d) => d.chave === diaEscolhido) ?? dias[0];
+
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-200 px-4 py-3">
@@ -208,60 +242,81 @@ export function SessoesDisponiveis({
         </p>
       )}
 
-      <div className="max-h-[420px] space-y-4 overflow-y-auto overscroll-contain px-4 py-4">
-        {agruparPorDia(sessoes).map((dia) => (
-          <div key={dia.rotulo}>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              {dia.rotulo}
-            </p>
-            <div className="flex flex-col gap-2">
-              {dia.sessoes.map((s) => {
-                const reservando = escolhida === s.id;
-                const ultimasVagas = s.vagas <= 3;
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    disabled={escolhida !== null}
-                    onClick={() => void escolher(s)}
-                    className="flex min-h-14 items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition hover:border-waz-50 hover:bg-slate-50 active:bg-slate-100 disabled:opacity-60"
-                  >
-                    <span className="min-w-0">
-                      <span className="block text-[15px] font-semibold text-slate-900">
+      {/* Passo 1: o dia. Uma fileira que rola na horizontal, com encaixe —
+          no celular o polegar percorre os dias sem sair da tela. */}
+      <div
+        role="tablist"
+        aria-label="Dias com horário disponível"
+        className="flex snap-x snap-mandatory gap-2 overflow-x-auto border-b border-slate-200 px-4 py-3"
+      >
+        {dias.map((d) => {
+          const ativo = d.chave === dia?.chave;
+          return (
+            <button
+              key={d.chave}
+              type="button"
+              role="tab"
+              aria-selected={ativo}
+              onClick={() => setDiaEscolhido(d.chave)}
+              className={`flex min-h-11 shrink-0 snap-start items-center gap-1.5 rounded-full border px-3.5 text-sm font-semibold transition ${
+                ativo
+                  ? "border-waz-50 bg-waz-50 text-white"
+                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              <span className="capitalize">{d.curto}</span>
+              <span
+                className={`text-xs font-medium ${ativo ? "text-white/80" : "text-slate-400"}`}
+              >
+                {d.sessoes.length}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Passo 2: a hora. Doze pastilhas cabem numa tela sem rolagem — era o
+          ponto de separar os dois passos. */}
+      {dia && (
+        <div className="px-4 py-4">
+          <p className="mb-2.5 text-xs font-semibold tracking-wide text-slate-500 uppercase">
+            {dia.rotulo}
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            {dia.sessoes.map((s) => {
+              const reservando = escolhida === s.id;
+              const ultimasVagas = s.vagas <= 3;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  disabled={escolhida !== null}
+                  onClick={() => void escolher(s)}
+                  className="flex min-h-14 flex-col items-center justify-center rounded-xl border border-slate-200 bg-white px-1 py-2 shadow-sm transition hover:border-waz-50 hover:bg-slate-50 active:bg-slate-100 disabled:opacity-60"
+                >
+                  {reservando ? (
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-200 border-t-waz-50" />
+                  ) : (
+                    <>
+                      <span className="text-[15px] font-semibold text-slate-900">
                         {fmtHora.format(new Date(s.inicioEm))}
                       </span>
                       <span
-                        className={`block text-xs ${ultimasVagas ? "text-amber-600" : "text-slate-500"}`}
+                        className={`text-[11px] ${ultimasVagas ? "text-amber-600" : "text-slate-500"}`}
                       >
-                        {s.duracaoMin} min ·{" "}
                         {s.vagas === 1 ? "última vaga" : `${s.vagas} vagas`}
                       </span>
-                    </span>
-                    {reservando ? (
-                      <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-slate-200 border-t-waz-50" />
-                    ) : (
-                      <svg
-                        viewBox="0 0 24 24"
-                        width="16"
-                        height="16"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="shrink-0 text-slate-400"
-                        aria-hidden
-                      >
-                        <path d="M9 6l6 6-6 6" />
-                      </svg>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+                    </>
+                  )}
+                </button>
+              );
+            })}
           </div>
-        ))}
-      </div>
+          <p className="mt-3 text-center text-xs text-slate-500">
+            {dia.sessoes[0]?.duracaoMin ?? 45} minutos · ao vivo
+          </p>
+        </div>
+      )}
     </div>
   );
 }
