@@ -106,6 +106,10 @@ model Lead {
 
   @@index([status])
   @@index([createdAt])
+  /// O CRM espelha este funil lendo por `updatedAt` com marca d'água — a cada
+  /// dez minutos, "o que mudou desde a última vez". Sem este índice a consulta
+  /// varre a tabela inteira toda vez, e a tabela cresce 1.000 linhas por dia.
+  @@index([updatedAt])
 }
 
 // Trilha de auditoria: cada resposta enviada durante o funil,
