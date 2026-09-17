@@ -481,10 +481,42 @@ function SetaMes({
   );
 }
 
+/**
+ * O endereço do `.ics`, deduzido do link do convite.
+ *
+ * O funil recebe do CRM o link da pessoa (`.../convite/<token>`) e não o token
+ * solto. Tirar o token daqui evita passar mais um campo pela ponte inteira só
+ * para remontar o mesmo endereço do outro lado.
+ */
+function calendarioIcs(linkDoConvite: string): string {
+  try {
+    const url = new URL(linkDoConvite);
+    const token = url.pathname.split("/convite/")[1];
+    if (!token) return linkDoConvite;
+    return `${url.origin}/api/agenda/calendario?convite=${token}`;
+  } catch {
+    return linkDoConvite;
+  }
+}
+
 function Confirmacao({ answers }: { answers: StepAnswers }) {
+  const [copiado, setCopiado] = useState(false);
   const inicio = answers.scheduledAt ? new Date(answers.scheduledAt) : null;
   const inicioValido = inicio && !Number.isNaN(inicio.getTime()) ? inicio : null;
   const convite = answers.meetingLocation;
+
+  const copiar = useCallback(async () => {
+    if (!convite) return;
+    try {
+      await navigator.clipboard.writeText(convite);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 2500);
+    } catch {
+      // Navegador embutido de aplicativo costuma negar a área de transferência.
+      // O link continua visível no botão de entrar; não vale quebrar a tela.
+      setCopiado(false);
+    }
+  }, [convite]);
 
   const link = inicioValido
     ? linkGoogleAgenda({
@@ -501,13 +533,13 @@ function Confirmacao({ answers }: { answers: StepAnswers }) {
       })
     : null;
 
-  useEffect(() => {
-    if (!link) return;
-    // Só a aba nova: um redirecionamento na própria aba levaria embora o link da
-    // sala, que é a informação mais importante desta tela.
-    const aba = window.open(link, "_blank");
-    if (aba) aba.opener = null;
-  }, [link]);
+  // O Google Agenda NÃO abre mais sozinho.
+  //
+  // `window.open` sem um clique é exatamente o que todo bloqueador de pop-up
+  // barra, então na maioria dos navegadores não acontecia nada — e nos poucos
+  // em que acontecia, a aba pulava por cima da tela que tem o link da sala, que
+  // é a informação mais importante do funil inteiro. Agora são três botões, e
+  // quem escolhe é a pessoa.
 
   return (
     <div className="rounded-2xl border border-waz-70 bg-white p-5 shadow-sm">
@@ -535,8 +567,14 @@ function Confirmacao({ answers }: { answers: StepAnswers }) {
               {fmtHora.format(inicioValido)}
             </p>
           )}
+          {/* Aqui dizia "o link também chega no seu e-mail e WhatsApp".
+              Não chegava: não há serviço de e-mail nem canal de WhatsApp
+              ligado. A frase é o pior tipo de defeito, porque FUNCIONA — ela
+              convence o lead de que não precisa guardar nada, ele fecha a aba
+              confiando, e a mensagem nunca vem. Enquanto o envio não existir,
+              a tela diz a verdade e entrega o que dá para guardar. */}
           <p className="mt-1 text-sm text-slate-500">
-            O link também chega no seu e-mail e WhatsApp.
+            Guarde o link agora — é por ele que você entra.
           </p>
         </div>
       </div>
@@ -556,18 +594,51 @@ function Confirmacao({ answers }: { answers: StepAnswers }) {
         </a>
       )}
 
+      {convite && (
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          {/* O `.ics` serve para iPhone, Outlook e qualquer calendário — o
+              link do Google só serve para quem usa Google, e metade do
+              Brasil abre isto no iPhone. E ele leva alarme junto, que é o
+              que realmente traz a pessoa de volta. */}
+          <a
+            href={calendarioIcs(convite)}
+            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-[15px] font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <rect x="3" y="4" width="18" height="18" rx="2" />
+              <path d="M16 2v4M8 2v4M3 10h18M12 14v4M10 16h4" />
+            </svg>
+            Adicionar ao calendário
+          </a>
+
+          <button
+            type="button"
+            onClick={() => void copiar()}
+            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-[15px] font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              {copiado ? (
+                <path d="M20 6 9 17l-5-5" />
+              ) : (
+                <>
+                  <path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1" />
+                  <path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" />
+                </>
+              )}
+            </svg>
+            {copiado ? "Link copiado" : "Copiar o link"}
+          </button>
+        </div>
+      )}
+
       {link && (
         <a
           href={link}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-2 flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-[15px] font-semibold text-slate-700 transition hover:bg-slate-50"
+          className="mt-2 block text-center text-sm font-medium text-slate-500 underline-offset-4 hover:underline"
         >
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <rect x="3" y="4" width="18" height="18" rx="2" />
-            <path d="M16 2v4M8 2v4M3 10h18M12 14v4M10 16h4" />
-          </svg>
-          Salvar no Google Agenda
+          Prefere o Google Agenda?
         </a>
       )}
     </div>

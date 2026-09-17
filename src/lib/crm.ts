@@ -15,6 +15,14 @@ import "server-only";
  * que falam com o CRM. Se ele sair do ar, é um lugar só para tratar.
  */
 
+import {
+  comoTratar,
+  dormir,
+  esperaAntesDe,
+  LIMITES_MS,
+  TENTATIVAS,
+} from "@/lib/retentativa";
+
 const TEMPO_LIMITE_MS = 8000;
 
 export type SessaoDisponivel = {
@@ -102,6 +110,19 @@ export async function buscarDisponibilidade(): Promise<Disponibilidade> {
   };
 }
 
+/**
+ * Reserva a vaga no CRM, insistindo quando a falha é passageira.
+ *
+ * Uma tentativa só era o que existia antes, e perdia o lead mais caro que há: o
+ * que preencheu os sete passos e chegou ao clique final. Uma piscada de rede
+ * devolvia "não conseguimos concluir o agendamento agora" e acabava ali.
+ *
+ * Repetir um POST só é seguro porque a reserva é IDEMPOTENTE do outro lado — o
+ * CRM tem `@@unique([meetingId, leadId])` e devolve `jaEstava: true` para quem
+ * já está inscrito. A chamada que estourou o tempo mas na verdade gravou não
+ * vira uma segunda inscrição: a repetição reencontra a primeira. O que repetir
+ * e o que não repetir está em `lib/retentativa`, com os casos escritos.
+ */
 export async function reservarVaga(dados: DadosDaReserva): Promise<ResultadoReserva> {
   const base = baseDoCrm();
   const chave = process.env.FUNIL_API_KEY?.trim();
@@ -109,19 +130,46 @@ export async function reservarVaga(dados: DadosDaReserva): Promise<ResultadoRese
     return { tipo: "erro", mensagem: "Agendamento não configurado neste ambiente." };
   }
 
-  let res: Response;
-  try {
-    res = await fetch(`${base}/api/agenda/reservar`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${chave}`,
-      },
-      body: JSON.stringify(dados),
-      signal: AbortSignal.timeout(TEMPO_LIMITE_MS),
-      cache: "no-store",
-    });
-  } catch {
+  let res: Response | null = null;
+
+  for (let tentativa = 0; tentativa < TENTATIVAS; tentativa++) {
+    const espera = esperaAntesDe(tentativa);
+    if (espera) await dormir(espera);
+
+    let resposta: Response | null = null;
+    try {
+      resposta = await fetch(`${base}/api/agenda/reservar`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${chave}`,
+        },
+        body: JSON.stringify(dados),
+        signal: AbortSignal.timeout(LIMITES_MS[tentativa] ?? TEMPO_LIMITE_MS),
+        cache: "no-store",
+      });
+    } catch {
+      // Rede, DNS ou tempo esgotado: nem chegou a haver resposta.
+      resposta = null;
+    }
+
+    const veredicto = comoTratar(
+      resposta ? { status: resposta.status } : { semResposta: true },
+    );
+
+    if (veredicto !== "tentarDeNovo") {
+      res = resposta;
+      break;
+    }
+
+    console.warn(
+      `[crm] reserva: tentativa ${tentativa + 1}/${TENTATIVAS} falhou`,
+      resposta ? `HTTP ${resposta.status}` : "sem resposta",
+    );
+    res = resposta;
+  }
+
+  if (!res) {
     return { tipo: "erro", mensagem: "Não conseguimos falar com a agenda agora." };
   }
 
