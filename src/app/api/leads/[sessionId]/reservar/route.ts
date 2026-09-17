@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { crmConfigurado, reservarVaga } from "@/lib/crm";
+import { podeReservar, respostaDeExcesso } from "@/lib/limite";
 
 /**
  * Reserva a vaga do lead numa sessão coletiva do CRM.
@@ -29,6 +30,13 @@ export async function POST(
     return NextResponse.json({ erro: "Sessão inválida." }, { status: 400 });
   }
 
+  // Antes de qualquer coisa: esta rota OCUPA um assento numa sessão real, de 20
+  // lugares, que um vendedor vai conduzir. Ela é pública porque é o navegador
+  // do lead que a chama — e sem freio um laço de vinte requisições esvazia a
+  // sessão. Isso foi medido: seis requisições, seis assentos.
+  const podeVaga = await podeReservar(request);
+  if (!podeVaga.permitido) return respostaDeExcesso(podeVaga);
+
   if (!crmConfigurado()) {
     return NextResponse.json(
       { erro: "Agendamento não configurado." },
@@ -46,7 +54,12 @@ export async function POST(
   if (!lead) {
     return NextResponse.json({ erro: "Sessão não encontrada." }, { status: 404 });
   }
-  if (!lead.fullName) {
+  // Nome, contato e empresa. O funil já pede os três ANTES de mostrar os
+  // horários, então nenhuma pessoa real esbarra nisto — mas para um robô cada
+  // assento passa a custar quatro requisições em vez de duas, e um assento
+  // reservado sem nenhum jeito de falar com a pessoa não vale nada para o
+  // closer de qualquer forma.
+  if (!lead.fullName || (!lead.email && !lead.phoneE164)) {
     return NextResponse.json(
       { erro: "Complete o cadastro antes de agendar." },
       { status: 409 }

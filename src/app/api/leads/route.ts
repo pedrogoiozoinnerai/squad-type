@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { origemDe, podeComecarFunil, respostaDeExcesso } from "@/lib/limite";
 import { prisma } from "@/lib/prisma";
 
 const initSchema = z.object({
@@ -18,6 +19,11 @@ const initSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  // Cada lead criado aqui atravessa para o CRM, é distribuído a um closer e
+  // vira tarefa. Sem freio, o teto de leads falsos é a velocidade da rede.
+  const pode = await podeComecarFunil(request);
+  if (!pode.permitido) return respostaDeExcesso(pode);
+
   const json = await request.json().catch(() => null);
   const parsed = initSchema.safeParse(json);
   if (!parsed.success) {
@@ -26,10 +32,9 @@ export async function POST(request: NextRequest) {
 
   const { sessionId, ...attribution } = parsed.data;
   const userAgent = request.headers.get("user-agent") ?? undefined;
-  const ipAddress =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    request.headers.get("x-real-ip") ??
-    undefined;
+  // Pela MESMA função que o freio usa para contar. Duas leituras diferentes do
+  // mesmo cabeçalho fazem o contador somar um balde que ninguém preenche.
+  const ipAddress = origemDe(request) ?? undefined;
 
   // Cada campo só é (re)gravado quando o client efetivamente o enviou desta vez —
   // o client já mescla com o que capturou antes (ver src/lib/attribution.ts), então

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { origemDe } from "@/lib/limite";
 import { prisma } from "@/lib/prisma";
 import { extractDdd, lookupDdd } from "@/lib/ddd";
 import { STEP_ORDER, nextStep, stepValueSchemas, type StepKey } from "@/lib/funnel";
@@ -52,10 +53,8 @@ export async function PATCH(
     create: {
       sessionId,
       userAgent: request.headers.get("user-agent") ?? undefined,
-      ipAddress:
-        request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-        request.headers.get("x-real-ip") ??
-        undefined,
+      // Ver `lib/limite`: uma definição só de origem, senão o freio não conta.
+      ipAddress: origemDe(request) ?? undefined,
     },
   });
 
