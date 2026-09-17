@@ -1,4 +1,4 @@
-# Deploy — Supabase + Vercel + Cal.com
+# Deploy — Supabase + Vercel + CRM
 
 > Guia do funil (Type). CRM e Dashboard seguem o mesmo roteiro, com as
 > diferenças anotadas no fim. Escrito em 2026-09-14.
@@ -106,8 +106,8 @@ git push -u origin main
 | `DATABASE_URL` | pooler do `squad-prod` (6543, `?pgbouncer=true`) |
 | `DIRECT_URL` | conexão direta do `squad-prod` (5432) |
 | `NEXT_PUBLIC_BRAND_NAME` | `Squad.com` |
-| `NEXT_PUBLIC_CAL_LINK` | `usuario/diagnostico-ia` (passo 6) |
-| `CAL_WEBHOOK_SECRET` | gerado pelo Cal.com (passo 6) |
+| `CRM_URL` | `https://squad-crm.vercel.app` (passo 6) |
+| `FUNIL_API_KEY` | a mesma chave do CRM (passo 6) |
 | `NEXT_PUBLIC_FB_PIXEL_ID` | pixel do site principal |
 | `NEXT_PUBLIC_ATTRIBUTION_COOKIE_DOMAIN` | `.squad.com` |
 
@@ -152,28 +152,49 @@ DATABASE_URL="<pooler do squad-prod>" npm run db:seed
 
 ## 5. A ordem entre os três
 
-O Type primeiro: é o único que capta lead e o único que depende do Cal.com. CRM
-e Dashboard podem subir depois, sem pressa — mas **as consultas SQL cruzadas
+Agora o CRM vem primeiro: é ele que serve as sessões e recebe as reservas, e
+sem ele no ar o funil não fecha. Depois o Type, e o Dashboard por último. Mas **as consultas SQL cruzadas
 deles ainda estão em dialeto SQLite** e precisam ser convertidas antes
 (`julianday()`, `date(x, tz)`, `active = 1` e identificadores sem aspas, que o
 Postgres rebaixa para minúsculo). São 24 consultas em
 `Dashboard/src/lib/sources/` e `CRM/src/lib/type-funnel.ts`.
 
-## 6. Cal.com
+## 6. Agendamento pelo CRM
 
-1. Conta em [cal.com](https://cal.com) e um tipo de evento — sugestão:
-   "Diagnóstico IA — 30min", com buffer e antecedência mínima.
-2. O link tem o formato `usuario/nome-do-evento`. É **só esse trecho** que vai
-   em `NEXT_PUBLIC_CAL_LINK` (sem `https://cal.com/`).
-3. O embed já pré-preenche nome, e-mail e notas (empresa, segmento, cargo) e
-   manda o `sessionId` em `metadata` — é assim que a reserva volta amarrada ao
-   lead certo.
-4. **Webhook** (Settings → Developer → Webhooks → New):
-   - URL: `https://type.squad.com/api/webhooks/cal`
-   - Evento: **Booking Created** (no mínimo)
-   - Copie o **Secret** gerado para `CAL_WEBHOOK_SECRET` na Vercel
-5. Teste agendando você mesmo: o lead precisa terminar com `status = COMPLETED`
-   e `calBookingUid` preenchido no banco.
+O Cal.com saiu. As reuniões agora são **sessões coletivas** servidas pelo CRM
+(MeetSquad), e o funil é só a vitrine delas.
 
-O webhook existe porque o embed depende de um evento no navegador do lead; se
-ele fechar a aba logo após confirmar, só o webhook registra o agendamento.
+1. **A chave compartilhada.** Gere uma vez:
+
+   ```bash
+   openssl rand -hex 32
+   ```
+
+   O **mesmo valor** vai em `FUNIL_API_KEY` nos dois projetos da Vercel — o do
+   CRM e o do Type. Valores diferentes dão 401 em toda reserva.
+
+2. **`CRM_URL`** no projeto do Type, apontando para o CRM em produção
+   (`https://squad-crm.vercel.app`, ou o domínio próprio quando existir).
+   Crie as duas como **Config**, não Secret, e marque Production.
+
+3. **No CRM**, crie o modelo de sessão recorrente e confirme que as instâncias
+   estão sendo geradas. Enquanto `GET /api/agenda/disponibilidade` devolver
+   `sessoes: []`, o funil mostra "sem horários abertos" e ninguém agenda.
+
+4. **Teste de ponta a ponta**: percorra o funil, escolha uma sessão e confirme
+   no banco que o lead ficou com `scheduledAt`, `crmMeetingId`, `crmConviteUrl`
+   e `status = COMPLETED`. Abra a URL do convite e veja a contagem regressiva.
+
+### Pendência manual no painel do Cal.com
+
+O webhook antigo (`/api/webhooks/cal`) **foi removido do código**. O cadastro no
+painel do Cal.com continua lá e precisa ser apagado à mão:
+
+> Cal.com → Settings → Developer → Webhooks → apagar o que aponta para
+> `https://squad-type.vercel.app/api/webhooks/cal`.
+
+Enquanto existir, o Cal.com tenta entregar eventos num endereço que responde
+404. Não quebra nada aqui, mas enche o log de falhas do lado deles.
+
+As variáveis `NEXT_PUBLIC_CAL_LINK` e `CAL_WEBHOOK_SECRET` podem ser apagadas do
+projeto do Type na Vercel — nada mais as lê.

@@ -108,11 +108,15 @@ export const stepValueSchemas = {
   REVENUE: z.object({
     revenueRange: z.enum(REVENUE_OPTIONS),
   }),
-  SCHEDULE: z.object({
-    calBookingUid: z.string().trim().min(1),
-    scheduledAt: z.string().trim().min(1),
-    meetingLocation: z.string().trim().optional(),
-  }),
+  // O agendamento NÃO passa por aqui: quem reserva é
+  // `POST /api/leads/[sessionId]/reservar`, que fala com o CRM e grava
+  // `crmMeetingId`, `crmConviteUrl` e `scheduledAt` de uma vez.
+  //
+  // A chave continua existindo porque `satisfies Record<StepKey, …>` exige
+  // uma por passo — e o valor antigo pedia `calBookingUid`, campo que o Cal.com
+  // levou embora. Qualquer coisa enviada aqui é recusada antes da validação,
+  // com uma mensagem que diz para onde ir.
+  SCHEDULE: z.object({}).loose(),
 } satisfies Record<StepKey, z.ZodType>;
 
 export type StepAnswers = {
@@ -126,8 +130,14 @@ export type StepAnswers = {
   segment?: string;
   role?: string;
   revenueRange?: string;
-  /** true assim que o Cal.com confirma o agendamento — evita reabrir o calendário ao retomar a sessão. */
+  /** true assim que a vaga é reservada no CRM — evita reabrir a lista de sessões ao retomar. */
   scheduledConfirmed?: boolean;
+  /** Dados da reunião confirmada, em ISO. Guardados para reconstruir o link do
+   * Google Agenda se a pessoa recarregar a página depois de agendar. */
+  scheduledAt?: string;
+  scheduledEndAt?: string;
+  meetingLocation?: string;
+  meetingTitle?: string;
 };
 
 // --- Roteiro de mensagens do bot (personalizado conforme respostas anteriores) ---

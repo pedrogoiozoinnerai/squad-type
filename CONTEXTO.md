@@ -9,7 +9,7 @@
 Um formulário conversacional (estilo Typebot/chat) para captação e qualificação
 de leads da **Squad.com**. O visitante "conversa" com o Waz (personagem/agente
 de IA da Squad.com) respondendo 8 perguntas, uma de cada vez, e termina
-agendando uma reunião via Cal.com.
+reservando vaga numa sessão coletiva de apresentação, servida pelo CRM.
 
 **Referência usada para desenhar o funil**: `type.viverdeia.ai` (funil de outra
 operação) — foi analisado ao vivo no navegador pra copiar o padrão de UX
@@ -23,7 +23,8 @@ agendamento embutido).
 | Funil **fixo** em código (não um construtor visual genérico) | O usuário escolheu essa opção explicitamente — é mais rápido de entregar; um builder visual completo (tipo Typebot) foi considerado e descartado por ora |
 | **Next.js 16** full-stack (App Router + API routes) | Menos peças móveis que frontend/backend separados; deploy único |
 | **SQLite local** → **Postgres em produção** | Não havia Postgres/Docker disponível na máquina de dev; o schema Prisma já está pronto pra trocar o `provider` |
-| **Cal.com** embutido (embed) + webhook | Já é uma ferramenta popular de agendamento; embed cobre o caminho feliz, webhook cobre o caso do lead fechar a aba antes do evento client-side disparar |
+| ~~**Cal.com** embutido (embed) + webhook~~ — **removido em 2026-09-15** | Substituído pelas sessões coletivas do próprio CRM: o agendamento deixa de depender de terceiro, some o formulário que repetia dados já respondidos, e o caminho de escrita passa a ser um só (servidor → CRM) em vez de dois que podiam divergir |
+| **Sessões coletivas do CRM** (MeetSquad) | Não são horários avulsos: turmas recorrentes com lotação, que o CRM materializa. O funil lê a disponibilidade e reserva com chave compartilhada, sempre do servidor |
 | ~~**HubSpot** para CRM~~ — **removido em 2026-09-14** | O CRM próprio (`../CRM`) assumiu o papel: os dois apps dividem o mesmo Postgres, então o lead do funil vira lead do CRM sem integração externa |
 | Atribuição dinâmica de UTM (cookie, 90 dias) | Pedido explícito — não pode perder a campanha de origem mesmo se o lead navegar por páginas sem UTM na URL antes de chegar no funil |
 
@@ -79,7 +80,7 @@ manual, seção "Paleta de Cores").
 6. Cargo (seletor em **tela cheia** — a copy do bot muda se é decisor
    (Sócio/CEO/C-Level) ou não, e isso também qualifica o lead)
 7. Faturamento anual (dropdown)
-8. Agendamento (Cal.com embutido)
+8. Agendamento (lista de sessões do CRM)
 
 Todas as mensagens do bot (incluindo a personalização por cidade/cargo) estão
 em `src/lib/funnel.ts` — é o lugar certo pra editar copy.
@@ -95,8 +96,8 @@ src/
     api/
       leads/route.ts             → POST: cria/atualiza sessão + atribuição (UTMs)
       leads/[sessionId]/route.ts → PATCH: salva a resposta de cada passo
-      leads/[sessionId]/schedule/route.ts → POST: confirma agendamento (client-side)
-      webhooks/cal/route.ts      → POST: confirma agendamento (server-side, via Cal.com)
+      leads/[sessionId]/reservar/route.ts → POST: reserva a vaga no CRM (único caminho de escrita)
+      agenda/route.ts            → GET: disponibilidade, intermediando o CRM
   components/funnel/             → toda a UI do chat (bolhas, inputs, avatar, header)
   lib/
     funnel.ts                    → roteiro/copy do bot, opções de cada passo, validação (zod)
@@ -138,9 +139,8 @@ que já foi visto:
 | Integração | Status | O que falta |
 | --- | --- | --- |
 | **Facebook Pixel** | Código pronto (`NEXT_PUBLIC_FB_PIXEL_ID`), advanced matching por nome | Usuário ainda não tem o ID do pixel do site principal squad.com |
-| **Cal.com** (embed) | Funcionando, pré-preenche nome/e-mail/notas | Precisa do link real (`NEXT_PUBLIC_CAL_LINK`) |
-| **Cal.com** (webhook) | Código pronto em `/api/webhooks/cal` | Precisa configurar o webhook no painel do Cal.com + `CAL_WEBHOOK_SECRET` |
-| **CRM próprio** | Mesmo Postgres (`master_data`), schemas `type` e `crm` | O import em `/admin/importar` ainda é manual; empurrar o lead automaticamente está no PLANO.md |
+| **Sessões do CRM** | Lista, reserva e confirmação prontas (`CRM_URL` + `FUNIL_API_KEY`) | O CRM precisa ter sessões materializadas — hoje `disponibilidade` devolve lista vazia |
+| **CRM próprio** | Mesmo Postgres (`master_data`), schemas `type` e `crm`; cron de 10 min sincroniza os leads | Nada pendente no caminho automático |
 | **Atribuição de UTM** | ✅ Funcionando e testado (cookie 90 dias, sobrevive à navegação) | Nada pendente |
 
 Todas essas variáveis ficam em `.env` (ver `.env.example` para a lista
@@ -149,8 +149,8 @@ completa com comentários).
 ## 8. Pendências / próximos passos (o que só o usuário pode resolver)
 
 - [ ] Pegar o **Facebook Pixel ID** do site principal squad.com
-- [ ] Criar o tipo de evento no **Cal.com** e colar o link
-- [ ] Configurar o **webhook do Cal.com** (Settings → Developer → Webhooks)
+- [ ] Criar as **sessões recorrentes no CRM** — sem elas o funil não tem o que oferecer
+- [ ] Apagar o **webhook antigo no painel do Cal.com** (o endpoint já não existe)
 - [ ] Revisar `/privacidade` e `/termos` **com o jurídico** — conteúdo atual é placeholder
 - [ ] Trocar SQLite → Postgres antes de ir pra produção (passo a passo no README)
 

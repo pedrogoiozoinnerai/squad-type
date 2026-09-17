@@ -17,7 +17,7 @@ Prisma + SQLite (dev) com caminho direto para Postgres em produção.
 5. Segmento (dropdown)
 6. Cargo (seletor em tela cheia — usado para personalizar a copy e para lead scoring)
 7. Faturamento anual (dropdown)
-8. Agendamento da reunião (embed do Cal.com)
+8. Agendamento da reunião (sessões coletivas do CRM)
 
 As mensagens do bot são personalizadas dinamicamente com base nas respostas
 anteriores (nome, cidade e cargo) — ver `src/lib/funnel.ts`.
@@ -65,11 +65,12 @@ Abra http://localhost:3000.
 | `DATABASE_URL`                           | sim         | `file:./dev.db` em dev. Em produção, string de conexão Postgres.              |
 | `NEXT_PUBLIC_BRAND_NAME`                 | não         | Nome exibido no cabeçalho e nas mensagens. Padrão: `Squad.com`.               |
 | `NEXT_PUBLIC_FB_PIXEL_ID`                | não         | Ativa o Facebook Pixel + advanced matching (nome) quando definido.           |
-| `NEXT_PUBLIC_CAL_LINK`                   | não\*       | Link do tipo de evento no Cal.com (ex: `seu-usuario/diagnostico-ia`).        |
-| `CAL_WEBHOOK_SECRET`                     | não         | Secret do webhook do Cal.com (ver seção abaixo).                             |
+| `CRM_URL`                                | sim\*       | Base do CRM que guarda as sessões (ex: `https://squad-crm.vercel.app`).      |
+| `FUNIL_API_KEY`                          | sim\*       | Chave compartilhada com o CRM. Só no servidor — nunca `NEXT_PUBLIC_`.        |
 | `NEXT_PUBLIC_ATTRIBUTION_COOKIE_DOMAIN`  | não         | Ex: `.squad.com`, para compartilhar UTMs entre subdomínios.                  |
 
-\* Sem `NEXT_PUBLIC_CAL_LINK`, a última etapa mostra um aviso no lugar do calendário.
+\* Sem `CRM_URL` e `FUNIL_API_KEY`, a última etapa avisa que não há horários
+e o lead não consegue agendar.
 
 ## Banco de dados
 
@@ -81,27 +82,34 @@ Modelo principal: `Lead` (uma linha por sessão de funil, atualizada
 progressivamente a cada passo) + `LeadEvent` (trilha de auditoria de cada
 resposta enviada).
 
-## Cal.com (agendamento)
+## Agendamento (sessões do CRM)
 
-1. Crie uma conta em [cal.com](https://cal.com) e um tipo de evento (ex: "Diagnóstico IA — 30min").
-2. Copie o link no formato `seu-usuario/nome-do-evento` para `NEXT_PUBLIC_CAL_LINK`.
-3. O embed já pré-preenche nome/e-mail/notas (empresa, segmento, cargo) e, ao
-   concluir o agendamento, grava o `calBookingUid` no lead via
-   `POST /api/leads/[sessionId]/schedule` e marca o status como `COMPLETED`.
+Não é um calendário de horários avulsos: são **sessões coletivas recorrentes**
+de apresentação, com lotação. O CRM (MeetSquad) as materializa e guarda as
+inscrições; o funil só mostra o que tem vaga e reserva.
 
-### Webhook (confirmação server-side)
+1. No CRM, crie o modelo de sessão recorrente e deixe as instâncias geradas.
+2. Gere a chave compartilhada com `openssl rand -hex 32` e coloque o **mesmo
+   valor** em `FUNIL_API_KEY` nos dois projetos.
+3. Aponte `CRM_URL` para o CRM (`http://localhost:3000` em dev).
 
-O embed confia num evento disparado no navegador do lead (`bookingSuccessful`).
-Se o lead fechar a aba um instante depois de agendar, esse evento pode não
-disparar. O webhook cobre esse caso, confirmando direto no servidor:
+O caminho que o lead percorre:
 
-1. No Cal.com: **Settings → Developer → Webhooks → New Webhook**.
-2. URL do endpoint: `https://SEU_DOMINIO/api/webhooks/cal`.
-3. Evento: marque pelo menos **Booking Created**.
-4. Cal.com gera um **Secret** — cole em `CAL_WEBHOOK_SECRET`.
-5. Pronto: `src/app/api/webhooks/cal/route.ts` valida a assinatura HMAC e
-   confirma o lead como `COMPLETED`, com proteção contra duplicidade caso o
-   evento client-side também chegue.
+- `GET /api/agenda` — intermedeia a disponibilidade do CRM. Sem chave, porque
+  ler a agenda não revela nada além de dia, hora e vagas.
+- `POST /api/leads/[sessionId]/reservar` — recebe só o `meetingId`. Nome,
+  contato, empresa e UTMs saem do `Lead` já gravado, não do corpo do pedido:
+  quem abrir o console não consegue inscrever outra pessoa.
+- Ao dar certo, grava `scheduledAt`, `crmMeetingId`, `crmConviteUrl`,
+  `status: COMPLETED` e devolve o link da sala.
+
+A reserva é idempotente pelo `sessionId` do funil: reenviar devolve a mesma
+inscrição, com `jaEstava: true`. Se a sessão lotar entre a escolha e o clique,
+o CRM responde 409 com `lotada: true` e a tela recarrega a lista — é corrida
+normal, não erro.
+
+A chave **nunca** vai ao navegador. `src/lib/crm.ts` é `server-only`, então
+importá-la de um componente vira erro de build em vez de vazamento.
 
 ## Rastreamento
 
@@ -121,6 +129,6 @@ disparar. O webhook cobre esse caso, confirmando direto no servidor:
 
 - Revisar `/privacidade` e `/termos` com o jurídico (conteúdo é placeholder).
 - Trocar o banco para Postgres (ver acima).
-- Configurar `NEXT_PUBLIC_FB_PIXEL_ID`, `NEXT_PUBLIC_CAL_LINK` e `CAL_WEBHOOK_SECRET`.
+- Configurar `NEXT_PUBLIC_FB_PIXEL_ID`, `CRM_URL` e `FUNIL_API_KEY`.
 - Considerar proteção anti-spam/rate limiting nas rotas `/api/leads/*` (fora do
   escopo inicial).

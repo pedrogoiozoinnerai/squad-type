@@ -25,6 +25,17 @@ export async function PATCH(
   }
 
   const { step, value } = parsedBody.data;
+
+  // O agendamento tem rota própria desde que saiu do Cal.com. Recusar aqui com
+  // o endereço certo evita o 400 mudo que o schema antigo dava — ele ainda
+  // pedia `calBookingUid`, um campo que não existe mais.
+  if (step === "SCHEDULE") {
+    return NextResponse.json(
+      { error: "Use POST /api/leads/[sessionId]/reservar para agendar." },
+      { status: 409 },
+    );
+  }
+
   const schema = stepValueSchemas[step as StepKey];
   const parsedValue = schema.safeParse(value);
   if (!parsedValue.success) {
@@ -86,9 +97,6 @@ export async function PATCH(
       break;
     case "REVENUE":
       data.revenueRange = v.revenueRange;
-      break;
-    case "SCHEDULE":
-      // tratado no endpoint dedicado /schedule
       break;
   }
 

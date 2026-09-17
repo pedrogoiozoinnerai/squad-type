@@ -65,7 +65,13 @@ model Lead {
   // Passo 7 — faturamento anual
   revenueRange String?
 
-  // Passo 8 — agendamento (Cal.com)
+  // Passo 8 — agendamento.
+  //
+  // A reserva passou a ser feita no CRM (sessões coletivas do MeetSquad); as
+  // três colunas `cal*` ficam por enquanto porque o cron do CRM as lê por SQL a
+  // cada dez minutos. Para leads novos elas nascem nulas.
+  crmMeetingId    String?
+  crmConviteUrl   String?
   calBookingUid   String?
   scheduledAt     DateTime?
   meetingLocation String?
@@ -100,6 +106,10 @@ model Lead {
 
   @@index([status])
   @@index([createdAt])
+  /// O CRM espelha este funil lendo por `updatedAt` com marca d'água — a cada
+  /// dez minutos, "o que mudou desde a última vez". Sem este índice a consulta
+  /// varre a tabela inteira toda vez, e a tabela cresce 1.000 linhas por dia.
+  @@index([updatedAt])
 }
 
 // Trilha de auditoria: cada resposta enviada durante o funil,

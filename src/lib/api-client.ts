@@ -105,19 +105,3 @@ export function submitStep(sessionId: string, step: StepKey, value: Record<strin
     return res.json();
   }, `submitStep(${step})`);
 }
-
-export function submitSchedule(
-  sessionId: string,
-  payload: { calBookingUid: string; scheduledAt: string; meetingLocation?: string }
-) {
-  return safe(async () => {
-    await afterLeadExists();
-    const res = await fetch(`/api/leads/${sessionId}/schedule`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) throw new HttpError("schedule_failed", res.status);
-    return res.json();
-  }, "submitSchedule");
-}

@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  BRAND_NAME,
   REVENUE_OPTIONS,
   SEGMENT_OPTIONS,
-  STEP_ORDER,
   firstName,
   introMessages,
   messagesForStep,
@@ -15,9 +15,9 @@ import {
 } from "@/lib/funnel";
 import { extractDdd, lookupDdd } from "@/lib/ddd";
 import { formatBRPhone } from "@/lib/phone-format";
-import { getOrCreateSessionId, loadFunnelState, saveFunnelState } from "@/lib/session";
+import { novaSessao } from "@/lib/session";
 import { captureAttribution } from "@/lib/attribution";
-import { initLead, submitSchedule, submitStep } from "@/lib/api-client";
+import { initLead, submitStep } from "@/lib/api-client";
 import { fbAdvancedMatch, fbTrack } from "@/lib/fb-pixel";
 import { ProgressBar } from "./ProgressBar";
 import { BotBubble, UserBubble } from "./ChatBubble";
@@ -26,7 +26,7 @@ import { TextFieldStep } from "./inputs/TextFieldStep";
 import { PhoneStep } from "./inputs/PhoneStep";
 import { SelectDropdown } from "./inputs/SelectDropdown";
 import { RoleFullscreenStep } from "./inputs/RoleFullscreenStep";
-import { ScheduleStep } from "./ScheduleStep";
+import { SessoesDisponiveis, type DadosAgendamento } from "./SessoesDisponiveis";
 
 /** `at` é o instante em que a mensagem entrou na conversa. Guardar isso na
  * mensagem (em vez de chamar `new Date()` na hora de desenhar) é o que impede
@@ -41,21 +41,16 @@ function readCookie(name: string): string | null {
 
 export function FunnelChat() {
   // Este componente só é montado no client (ver dynamic import em app/page.tsx
-  // com ssr:false), então é seguro ler localStorage já no estado inicial.
-  const [sessionId] = useState<string>(() => getOrCreateSessionId());
-  const [resumed] = useState(() => {
-    const persisted = loadFunnelState();
-    return persisted && persisted.sessionId === sessionId ? persisted : null;
-  });
-  const [chatLog, setChatLog] = useState<ChatMessage[]>(() => resumed?.chatLog ?? []);
-  const [answers, setAnswers] = useState<StepAnswers>(
-    () => (resumed?.answers as StepAnswers) ?? {}
-  );
-  const [currentStep, setCurrentStep] = useState<StepKey>(() =>
-    resumed ? STEP_ORDER[resumed.stepIndex] ?? "NAME" : "NAME"
-  );
+  // com ssr:false), então é seguro tocar em `window` já no estado inicial.
+  //
+  // Nada é retomado: quem recarrega ou volta depois começa a conversa do zero,
+  // com uma sessão nova. Foi decisão de produto, não descuido.
+  const [sessionId] = useState<string>(() => novaSessao());
+  const [chatLog, setChatLog] = useState<ChatMessage[]>([]);
+  const [answers, setAnswers] = useState<StepAnswers>({});
+  const [currentStep, setCurrentStep] = useState<StepKey>("NAME");
   const [typing, setTyping] = useState(false);
-  const [ready, setReady] = useState(() => !!resumed);
+  const [ready, setReady] = useState(false);
 
   // `busy` cobre a transição inteira de um passo: começa no envio da resposta e
   // só termina quando o bot acaba de falar e o passo seguinte já está no ar.
@@ -121,26 +116,13 @@ export function FunnelChat() {
       if (fbp || fbc) void initLead({ ...identificacao, fbp, fbc });
     }, 3000);
 
-    if (resumed) return () => window.clearTimeout(tentarClickIds);
-
     void (async () => {
       await pushBotMessages(introMessages());
       setReady(true);
     })();
 
     return () => window.clearTimeout(tentarClickIds);
-  }, [resumed, sessionId, pushBotMessages]);
-
-  // Persiste o progresso a cada mudança relevante (permite retomar ao recarregar).
-  useEffect(() => {
-    if (!ready) return;
-    saveFunnelState({
-      sessionId,
-      stepIndex: indexOfStep(currentStep),
-      answers,
-      chatLog,
-    });
-  }, [sessionId, ready, currentStep, answers, chatLog]);
+  }, [sessionId, pushBotMessages]);
 
   // Marca a última mensagem do usuário como lida (setinha azul) — feito com um
   // pequeno atraso, dissociado da resposta do bot, pra imitar o double-check
@@ -182,18 +164,26 @@ export function FunnelChat() {
     [pushBotMessages, markLastUserMessageRead]
   );
 
-  const handleScheduled = useCallback(
-    (payload: { calBookingUid: string; scheduledAt: string; meetingLocation?: string }) => {
-      setAnswers((a) => ({ ...a, scheduledConfirmed: true }));
-      void submitSchedule(sessionId, payload);
-      fbTrack("Schedule");
-    },
-    [sessionId]
-  );
+  // A reserva já foi gravada pelo servidor em /api/leads/[sessionId]/reservar —
+  // aqui só guardamos o suficiente para a confirmação sobreviver a um
+  // recarregamento e para montar o convite da agenda.
+  const handleAgendado = useCallback((dados: DadosAgendamento) => {
+    const comeca = new Date(dados.comecaEm);
+    const termina = new Date(comeca.getTime() + dados.duracaoMin * 60_000);
+    setAnswers((a) => ({
+      ...a,
+      scheduledConfirmed: true,
+      scheduledAt: dados.comecaEm,
+      scheduledEndAt: termina.toISOString(),
+      meetingLocation: dados.convite,
+      meetingTitle: `Apresentação ${BRAND_NAME}`,
+    }));
+    fbTrack("Schedule");
+  }, []);
 
   const mostrarEntrada = ready && !busy;
-  // O calendário do Cal.com passa de mil pixels de altura: ele pertence ao fluxo
-  // rolável junto das mensagens, não à barra fixa do rodapé.
+  // A lista de sessões é alta e rola por dentro: ela pertence ao fluxo das
+  // mensagens, não à barra fixa do rodapé.
   const passoAgendamento = currentStep === "SCHEDULE";
 
   return (
@@ -220,11 +210,11 @@ export function FunnelChat() {
         {typing && <TypingIndicator />}
 
         {mostrarEntrada && passoAgendamento && (
-          <ScheduleStep
+          <SessoesDisponiveis
             sessionId={sessionId}
             answers={answers}
-            alreadyScheduled={answers.scheduledConfirmed}
-            onScheduled={handleScheduled}
+            jaAgendado={answers.scheduledConfirmed}
+            onAgendado={handleAgendado}
           />
         )}
       </div>

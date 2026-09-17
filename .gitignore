@@ -52,3 +52,6 @@ next-env.d.ts
 # cópias de conflito do iCloud Drive ("arquivo 2.ts", "node_modules 2")
 * [0-9]
 * [0-9].*
+
+# Configuração pessoal do Claude Code (hooks, permissões) — não é do time
+.claude/settings.local.json
