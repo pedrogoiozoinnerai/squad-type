@@ -6,9 +6,20 @@
       "runtimeExecutable": "/bin/zsh",
       "runtimeArgs": [
         "-lc",
-        "exec npm run dev"
+        "npm run clean:icloud; exec npx next dev"
       ],
-      "port": 3001
+      "port": 3001,
+      "autoPort": true
+    },
+    {
+      "name": "crm",
+      "runtimeExecutable": "/bin/zsh",
+      "runtimeArgs": [
+        "-lc",
+        "cd ../CRM && exec npm run dev"
+      ],
+      "port": 3000,
+      "autoPort": true
     }
   ]
 }
