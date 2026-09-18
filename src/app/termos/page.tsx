@@ -10,10 +10,9 @@ export default function TermsPage() {
         Conteúdo placeholder — substitua pelo texto revisado pelo jurídico da{" "}
         {BRAND_NAME} antes de publicar em produção.{" "}
         <strong>
-          O parágrafo sobre gravação precisa ser revisado antes de a gravação ser
-          ligada, não depois: é este aceite que cobre gravar a reunião.
-        </strong>{" "}
-        O prazo de guarda ainda está marcado como [DEFINIR] e precisa de um número.
+          O parágrafo sobre gravação já está revisado e pode subir junto com ela:
+          é este aceite que cobre gravar a reunião.
+        </strong>
       </p>
       <div className="mt-8 space-y-4 text-sm leading-relaxed text-slate-600">
         <p>
@@ -30,6 +29,27 @@ export default function TermsPage() {
           ÁUDIO E VÍDEO, que uma IA processa o conteúdo, que o time comercial
           inteiro assiste (e não só quem conduziu), e por quanto tempo fica.
           Sem essas quatro, o aceite existe e não cobre o que fazemos.
+
+          A quarta ficou sem número de propósito, e não por esquecimento.
+
+          O prazo esteve escrito aqui como um marcador a preencher, seguido de
+          "e depois apagadas" — um texto que prometia um apagamento automático
+          que NÃO acontece:
+          `retencaoVideoDias` e `retencaoTranscricaoDias` são 0 no CRM, e 0
+          significa guardar para sempre. Uma promessa escrita que o sistema não
+          cumpre é pior do que não ter parágrafo nenhum.
+
+          Procurei o prazo do CRM de referência para copiar: não existe. Não
+          está na página pública de termos deles, que nem menciona gravação, e
+          em 59 tabelas, 61 RPCs e 46 Edge Functions mapeadas não há nenhuma
+          rotina de apagamento — com 9.651 gravações e 7.571 horas acumuladas na
+          base. Eles não apagam.
+
+          Então o texto passou a descrever o que a máquina faz de verdade:
+          guarda enquanto durar a relação, e apaga quando a pessoa pedir — que é
+          executável hoje, pelo `npm run esquecer` do CRM, e que o parágrafo
+          seguinte já oferecia. No dia em que houver um prazo, ele entra nos dois
+          lugares ao mesmo tempo: aqui e nos dois campos de `Config`.
         */}
         <p>
           <strong className="text-slate-900">Gravação da reunião.</strong> As
@@ -41,7 +61,8 @@ export default function TermsPage() {
           para treinamento interno da equipe, e não é publicado nem
           compartilhado fora dela. A transcrição é processada por fornecedores
           contratados para essa finalidade, que podem estar fora do Brasil. As
-          gravações são guardadas por [DEFINIR] e depois apagadas.
+          gravações e as transcrições são guardadas enquanto durar a relação
+          comercial, e apagadas quando você pedir.
         </p>
         <p>
           Você pode revogar este consentimento a qualquer momento, e pode pedir
